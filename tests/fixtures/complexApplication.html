@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fellowship in AI Safety & Alignment - Application Form</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 4px; font-weight: bold; }
+    input, textarea, select { width: 100%; padding: 8px; box-sizing: border-box; }
+    .honeypot { position: absolute; left: -9999px; }
+    .sensitive-box { background: #fee; padding: 12px; margin-top: 20px; border: 1px solid #fcc; }
+  </style>
+</head>
+<body>
+  <h1>Fellowship in AI Safety & Alignment</h1>
+  <h2>Center for Frontier Safety Research</h2>
+
+  <form id="fellowship_form" onsubmit="return false;">
+    <!-- Honeypot -->
+    <div class="honeypot">
+      <input type="text" name="website_trap" tabindex="-1" autocomplete="off" />
+    </div>
+
+    <!-- Candidate Personal Info -->
+    <div class="form-group">
+      <label for="first_name">First Name</label>
+      <input type="text" id="first_name" name="firstName" autocomplete="given-name" required />
+    </div>
+
+    <div class="form-group">
+      <label for="last_name">Last Name</label>
+      <input type="text" id="last_name" name="lastName" autocomplete="family-name" required />
+    </div>
+
+    <div class="form-group">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" name="email" autocomplete="email" required />
+    </div>
+
+    <div class="form-group">
+      <label for="phone">Phone Number</label>
+      <input type="tel" id="phone" name="phone" autocomplete="tel" />
+    </div>
+
+    <!-- Links -->
+    <div class="form-group">
+      <label for="github_url">GitHub URL</label>
+      <input type="url" id="github_url" name="github" placeholder="https://github.com/..." />
+    </div>
+
+    <div class="form-group">
+      <label for="linkedin_url">LinkedIn Profile</label>
+      <input type="url" id="linkedin_url" name="linkedin" placeholder="https://linkedin.com/in/..." />
+    </div>
+
+    <!-- Dropdown / Select -->
+    <div class="form-group">
+      <label for="country">Country of Residence</label>
+      <select id="country" name="country">
+        <option value="">Select country...</option>
+        <option value="US">United States</option>
+        <option value="UK">United Kingdom</option>
+        <option value="CA">Canada</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="degree_level">Highest Degree Attained</label>
+      <select id="degree_level" name="degree">
+        <option value="">Select degree...</option>
+        <option value="BS">Bachelor of Science</option>
+        <option value="MS">Master of Science</option>
+        <option value="PhD">Doctor of Philosophy</option>
+      </select>
+    </div>
+
+    <!-- Work Auth -->
+    <div class="form-group">
+      <label for="work_auth">Are you legally authorized to work in the United States?</label>
+      <select id="work_auth" name="workAuth">
+        <option value="">Select...</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <!-- Pre-filled User Value (must be preserved!) -->
+    <div class="form-group">
+      <label for="user_note">Referral Source</label>
+      <input type="text" id="user_note" name="referral" value="Attended CHAI workshop" />
+    </div>
+
+    <!-- Written Questions with limits -->
+    <div class="form-group">
+      <label for="research_statement">Describe your technical focus in AI safety and verification.</label>
+      <p style="font-size: 11px; color: #666;">Max 250 words.</p>
+      <textarea id="research_statement" name="statement" rows="5"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="project_challenge">Detail an empirical experiment you conducted on model evaluation.</label>
+      <textarea id="project_challenge" name="challenge" rows="4" maxlength="500"></textarea>
+    </div>
+
+    <!-- Sensitive / Blocked Fields (MUST NOT BE AUTO-FILLED) -->
+    <div class="sensitive-box">
+      <h3>Protected & Certification Fields</h3>
+      <div class="form-group">
+        <label for="ssn_tax_id">National ID / Social Security Number</label>
+        <input type="text" id="ssn_tax_id" name="ssn" />
+      </div>
+
+      <div class="form-group">
+        <label for="account_pwd">Account Password</label>
+        <input type="password" id="account_pwd" name="password" />
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="legal_cert" name="certify_truth" />
+          I declare under penalty of perjury that the statements above are true.
+        </label>
+      </div>
+    </div>
+
+    <!-- Form Submit button - Extension must NEVER click this -->
+    <div style="margin-top: 24px;">
+      <button type="submit" id="submit_app_button" style="padding: 12px 24px; background: #222; color: #fff;">
+        Submit Application
+      </button>
+    </div>
+  </form>
+</body>
+</html>
