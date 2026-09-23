@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Storage } from '../../src/shared/storage';
-import { defaultProfile } from '../../src/shared/storage/defaultProfile';
 
 describe('Storage', () => {
   it('retrieves default profile and persists updates', async () => {
     const profile = await Storage.getProfile();
-    expect(profile.personal.firstName).toBe('Daud');
+    expect(profile.personal.firstName).toBe('');
 
     const updated = {
       ...profile,

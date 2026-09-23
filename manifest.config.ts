@@ -6,6 +6,7 @@ export default defineManifest({
   version: '1.0.0',
   description: 'Deterministic form engine & grounded AI writing assistant for opportunity applications',
   permissions: ['activeTab', 'scripting', 'storage', 'sidePanel'],
+  host_permissions: ['https://*/*', 'http://*/*'],
   action: {
     default_title: 'Open GroundedApply',
   },
