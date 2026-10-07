@@ -119,4 +119,6 @@ src/options/       Standalone settings page
 tests/             Unit, integration, and Chromium extension tests
 ```
 
-Contributions that improve real form compatibility are welcome. Include a minimal non-private fixture or reproducible example, and test both detection and the actual inserted value. Do not submit real applications as part of testing.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, bug reports, test requirements, and the privacy and safety boundaries. Contributions that improve real form compatibility are welcome. Include a minimal non-private fixture or reproducible example, and test both detection and the actual inserted value. Do not submit real applications as part of testing.
