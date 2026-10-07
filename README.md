@@ -1,141 +1,122 @@
-# GroundedApply
+# ApplyGo
 
-**GroundedApply** is a production-grade Chromium browser extension (Manifest V3) built to assist applicants completing AI safety job applications, research fellowships, internships, scholarships, conferences, research programs, grants, accelerators, and general opportunity applications.
+### No pay. No pain. Just apply.
 
-It operates under strict architectural separation between a **deterministic form engine** and a **grounded AI writing assistant**.
+ApplyGo is a local-first Chrome extension that fills the details you already know and helps write the answers that take longer. Jobs, fellowships, events, research programs, scholarships: less copying the same information, more time on the application itself.
 
----
+![ApplyGo's ocean-themed application interface](docs/images/applygo-ui.png)
 
-## 1. Product Overview & Core Philosophy
+*Actual extension UI, captured at 1280 × 720 with fictional candidate data. This is the side-panel interface opened in a browser tab for the screenshot.*
 
-Filling out multi-page technical applications involves two completely different tasks:
-1. **Entering structured facts** (names, emails, phone numbers, degrees, GPAs, links, work authorization). This must be **100% deterministic, exact, safe, and verifiable**. AI should never touch these.
-2. **Drafting written responses** (research statements, project narratives, motivation essays). This requires natural language synthesis that is **strictly grounded** in your actual verified experiences, without hallucinations, sales hype, or inflated claims.
+## How it works
 
-### The Non-Negotiable Boundaries
-- **Deterministic Form Engine**: Owns scanning visible controls, calculating weighted confidence, verifying filled values, managing atomic undo, and blocking sensitive fields.
-- **AI Writing Assistant**: Used solely for drafting, shortening, expanding, and adapting written answers for Daud. It is **never** permitted to interact with the DOM, press buttons, choose targets, fill structured fields, or submit forms.
-- **Zero Auto-Submission**: GroundedApply will **never** submit a form or click "Submit" / "Apply". The final review and submission always remain in your hands.
+There are two separate stages:
 
----
+1. **Fill the facts locally.** Open a form and launch ApplyGo. It scans the page, reads labels, and fills high-confidence basic details from your saved profile and imported knowledge base. Names, email, LinkedIn, GitHub, education, and other supported structured fields do not need AI or an API key.
+2. **Generate the written answers when you're ready.** Click **Generate & Fill** to draft responses using your configured provider and allowed knowledge entries. The form engine inserts eligible answers sequentially; uncertain answers and missing facts stay available for review.
 
-## 2. Supported Platforms & Form Systems
+Your final review and submission are always yours. ApplyGo does not submit applications, solve CAPTCHAs, or invent missing personal information. It preserves existing answers rather than overwriting them by default.
 
-GroundedApply features dedicated platform adapters and universal heuristics:
-- **Standard HTML5 Forms**: Native forms, custom semantic form-groups, accessible inputs, textareas, selects, and comboboxes.
-- **Google Forms**: `.geS5n`, `[role="listitem"]`, multi-page forms, and custom radio/checkbox grids.
-- **Greenhouse**: Boards (`boards.greenhouse.io`, `#application_form`, nested question attributes).
-- **Lever**: Lever jobs (`jobs.lever.co`, `.application-form`, custom question cards).
-- **Ashby**: Ashby applications (`[data-ashby-input]`, custom comboboxes).
-- **Workable**: Workable boards (`apply.workable.com`, `[data-ui="application-form"]`).
-- **SmartRecruiters**: `st-apply`, `oc-form` widgets.
-- **Fillout**: Dynamic multi-step forms.
-- **Typeform**: Conversational step-by-step forms.
-- **Workday**: Best-effort structured detection and review fallback.
+## Features
 
----
+- Import a Markdown knowledge base and extract supported profile facts, including bold labels, lists, links, and tables.
+- Local contact autofill, independent of AI availability.
+- A logo-only floating launcher and five side-panel tabs: Apply, Questions, Profile, Knowledge, Activity.
+- Grounded written drafts with source references, missing-information reporting, and review states.
+- Bring your own API key: Gemini, OpenAI, OpenRouter, Ollama, or another supported OpenAI-compatible endpoint.
+- Editable drafts, local application history, fill verification, and undo for supported fill transactions.
+- Store PDF/DOCX resumes and attempt attachment to supported native file controls. Custom upload widgets may still need a manual upload.
+- Export and restore local JSON backups.
+- Ocean colors and locally bundled Poppins fonts.
 
-## 3. Honest Limitations
+**About “No pay”:** ApplyGo does not impose an application subscription or paywall. Your AI provider may charge for requests or enforce quotas. Basic autofill does not use the provider. This repository does not promise free API access.
 
-- **Browser Security Boundaries**: File inputs (`<input type="file">`) cannot have synthetic local file paths attached without native OS file picker interaction in standard Web APIs due to browser security restrictions. GroundedApply detects resume file inputs, guides you to select your stored resume, and copies references cleanly.
-- **Custom Canvas/WebGL Elements**: Forms rendered inside `<canvas>` or non-DOM WebGL interfaces cannot be inspected or filled.
-- **CAPTCHAs & Turnstile**: Bot detection puzzles (reCAPTCHA, Cloudflare Turnstile, hCaptcha) are intentionally ignored and must be solved manually.
-- **Demographic Fields**: Questions concerning race, ethnicity, gender, and veteran status are blocked from automatic autofill and held for manual inspection.
+## Install from source
 
----
+Use a current Node.js LTS release, npm, and Google Chrome with the Side Panel API. Other Chromium browsers may differ; they are not all verified.
 
-## 4. Privacy & BYOK Architecture
-
-- **100% Local-First**: No external backend servers, telemetry, tracking pixels, or third-party cookies.
-- **Bring-Your-Own-Key (BYOK)**: Supports OpenAI or any OpenAI-compatible API endpoint (e.g. self-hosted, Ollama, OpenRouter).
-- **Storage Isolation**: The API key is stored in Chromium extension storage and used **only** from the background service worker. It is never exposed to web pages or content scripts.
-- **Minimal Context**: The extension never sends full-page HTML to the AI model. Only the isolated question text and your explicitly selected knowledge records are sent.
-- *Security Note*: Local extension storage is suitable for personal BYOK use but is not equivalent to hardware-backed secure enclaves (HSM/TPM).
-
----
-
-## 5. Permissions Rationale
-
-| Permission | Justification |
-| :--- | :--- |
-| `activeTab` | Access the active web page when user invokes the extension to detect form controls. |
-| `storage` | Persist profile data, grounded knowledge, application history, and preferences locally. |
-| `sidePanel` | Display the 5-tab GroundedApply application interface in Chrome's side panel. |
-| `scripting` | Inject form filler scripts and safe input listeners into form frames. |
-
----
-
-## 6. Installation & Load Unpacked
-
-### Prerequisites
-- Node.js (v18+) and npm.
-- Google Chrome or any Chromium-based browser (Brave, Edge).
-
-### Build from Source
-```bash
-# Clone the repository and navigate into it
-cd form-FILL
-
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-
-# Build production unpacked extension
+```sh
+git clone https://github.com/daudibrahimhasan/ApplyGo.git
+cd ApplyGo
+npm ci
 npm run build
 ```
 
-### Loading Unpacked in Chrome
-1. Open Google Chrome and navigate to: `chrome://extensions`
-2. Enable **Developer mode** toggle in the top-right corner.
-3. Click the **Load unpacked** button in the top-left corner.
-4. Select the `dist/` directory inside `form-FILL`.
-5. Pin the **GroundedApply** icon to your toolbar.
+Then:
 
----
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Select **Load unpacked** and choose the repository's `dist` folder.
+4. Pin ApplyGo, open an application form, and click the toolbar icon or floating logo.
 
-## 7. Configuration & Getting Started
+After rebuilding, reload the extension and refresh the form page. Old injected buttons keep their old extension connection until the page reloads.
 
-1. **Open Settings**: Click the GroundedApply icon or click the gear icon in the side panel header.
-2. **Enter API Key**:
-   - Provide your OpenAI API key (`sk-...`).
-   - (Optional) Customize the model name (default: `gpt-4o`) or Base URL for third-party endpoints.
-   - Click **Test Connection** to verify endpoint availability.
-3. **Verify Profile & Knowledge**:
-   - Open the **Profile** tab to review personal, education, employment, and research records.
-   - Open the **Knowledge** tab to inspect and customize verified factual records about your AI safety work, projects (e.g. `AgentContain`), and unlearning experiments.
-4. **Apply on Opportunity Pages**:
-   - Navigate to any job application or fellowship form.
-   - Click the floating GroundedApply launcher or open the Side Panel.
-   - Click **Fill safe fields** to autofill high-confidence fields instantly.
-   - Switch to **Questions** to generate grounded written answers.
+## Set up your information
 
----
+1. Open **Knowledge → Import .md** and import your own document. A fictional format example is available in [sample-knowledge.md](tests/fixtures/sample-knowledge.md).
+2. Check **Profile**. Supported explicit facts can be extracted from the knowledge base, but information that is missing, ambiguous, or unsupported needs to be added manually. Save your profile.
+3. Add a resume in **Profile** if you want it available for supported upload fields.
+4. For written responses, open **Settings**, select a provider, enter your key, choose a model your account actually supports, and test the connection.
+5. Open a form. Basic details fill locally. Use **Generate & Fill** for written answers, inspect review fields, and submit manually.
 
-## 8. Development & Testing Commands
+The writing prompt currently includes the author's conversational writing style. If you're adapting ApplyGo for yourself, review [systemPrompt.ts](src/core/generation/systemPrompt.ts) and replace those voice instructions with your own. The extension starts with an empty profile and knowledge base, not the author's personal information.
 
-```bash
-# Start Vite development server
-npm run dev
+## Compatibility and limits
 
-# Run unit and integration tests (Vitest)
-npm test
+The engine detects native inputs, textareas, selects, accessible custom controls, and editable textboxes. It reads native labels, ARIA references, question headings, and nearby instructions, including Google Forms-style layouts. Dynamic pages are rescanned as fields change.
 
-# Run End-to-End browser tests (Playwright)
-npm run test:e2e
+Platform recognition exists for Google Forms and several application systems, including Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Fillout, Typeform, and Workday. **Recognition is not a guarantee of successful filling on every platform.** The automated tests use local fixtures, not a comprehensive live compatibility matrix.
 
-# Run TypeScript type check
-npx tsc --noEmit
+- Custom dropdowns, multi-step flows, inaccessible frames, and closed shadow roots can need manual help.
+- Only currently accessible page controls can be scanned; future pages are not magically available.
+- Canvas-rendered controls cannot be read as normal form fields.
+- Browser system pages such as `chrome://newtab` cannot be inspected.
+- Sensitive fields and legal consent require manual handling.
+- API errors, model access restrictions, quotas, and provider outages can prevent writing generation. They should not block local basic autofill.
+- A matched field with no saved value stays blank. Check Profile before assuming the detector is broken.
 
-# Package and verify release bundle
-npm run package
+## Privacy and permissions
+
+Profile facts, knowledge entries, resume data, settings, and history are stored locally in the browser extension. There is no application backend or telemetry in this codebase.
+
+When you request AI writing, the configured provider receives the prompt and supplied grounding context. Depending on the workflow, this includes question/opportunity text and profile or knowledge information. Local-first does **not** mean those AI requests stay on your device. Review your provider's policies and knowledge-entry AI permissions.
+
+The API key is stored in extension storage and used by the background service worker. Extension storage is not a hardware-backed secret vault. Exported backups may contain sensitive information; keep them private. Do not commit your personal knowledge base, keys, resumes, or browser profiles.
+
+| Permission | Why it is used |
+| --- | --- |
+| `activeTab`, `tabs` | Identify and interact with the application tab. |
+| `scripting` | Inject the scanning and filling engine. |
+| `storage` | Save your local information and settings. |
+| `sidePanel` | Show the extension interface alongside a form. |
+| HTTP/HTTPS host access | Read supported forms and communicate with configured provider endpoints. |
+
+Broad host access is declared in the manifest. Review [manifest.config.ts](manifest.config.ts) before installing if that does not fit your privacy requirements.
+
+## Development
+
+Built with React, TypeScript, Vite, Manifest V3, Zod, Vitest, and Playwright.
+
+```sh
+npm run dev                         # Development build
+npm test                            # Unit and integration tests
+npx playwright install chromium     # Install the browser used by tests
+npm run test:e2e                     # Extension browser tests
+npm run lint                        # Code checks
+npm run package                     # Build and verify the unpacked bundle
+node scripts/capture-ui.js          # Recreate the 16:9 README screenshot after building
 ```
 
----
+`npm run package` verifies `dist`; it does not publish to the Chrome Web Store or create a release automatically.
 
-## 9. Data Portability (Import & Export)
+```text
+src/background/    Provider requests and extension messaging
+src/content/       Detection, field interaction, launcher, and platform recognition
+src/core/          Matching, Markdown import, retrieval, validation, and writing rules
+src/shared/        Schemas, storage, contracts, and provider settings
+src/sidepanel/     Main application interface
+src/options/       Standalone settings page
+tests/             Unit, integration, and Chromium extension tests
+```
 
-- **Backup JSON**: In Settings, click **Export Backup JSON** to download a single file containing your full profile, knowledge repository, previous answers, and application activity.
-- **Restore**: Click **Import Backup JSON** to restore your data onto any computer.
-- **Wipe All**: Click **Delete All Stored Data** in Settings to clear all local storage completely.
+Contributions that improve real form compatibility are welcome. Include a minimal non-private fixture or reproducible example, and test both detection and the actual inserted value. Do not submit real applications as part of testing.

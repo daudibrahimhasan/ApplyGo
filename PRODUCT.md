@@ -1,7 +1,7 @@
-# GroundedApply - Product Purpose & Requirements
+# ApplyGo - Product Purpose & Requirements
 
 ## 1. Product Purpose
-GroundedApply is a Chromium browser extension built to assist applicants (specifically focused on Daud's profile, AI safety job applications, research fellowships, internships, scholarships, conferences, research programs, grants, accelerators, competitions, and general opportunity applications).
+ApplyGo is a Chromium browser extension built to assist applicants (specifically focused on Daud's profile, AI safety job applications, research fellowships, internships, scholarships, conferences, research programs, grants, accelerators, competitions, and general opportunity applications).
 
 It operates under strict architectural boundaries:
 1. **Deterministic Form Engine**: Owns page scanning, field detection, classification, profile lookup, exact and normalized matching, dropdown selection, file attachment selection, DOM mutation, React-controlled input handling, filled-value verification, confidence calculation, sensitive-field blocking, undo transactions, page change detection, and multi-page application tracking.

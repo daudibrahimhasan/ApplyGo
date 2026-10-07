@@ -29,7 +29,7 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const version = manifest.version || '1.0.0';
 
 console.log(`\n========================================`);
-console.log(`GroundedApply v${version} Build Verified!`);
+console.log(`ApplyGo v${version} Build Verified!`);
 console.log(`Unpacked extension directory: ${distDir}`);
 console.log(`Manifest V3 confirmed: ${manifestPath}`);
 console.log(`Permissions: ${manifest.permissions?.join(', ')}`);

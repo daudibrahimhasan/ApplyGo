@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { DetectedField, PageOpportunity } from '../../shared/schemas/fields';
-import { UserProfile, ResumeRecord } from '../../shared/schemas/profile';
+import { UserProfile } from '../../shared/schemas/profile';
+import { FormAnalysisState } from '../../shared/schemas/workflow';
+import { isWrittenQuestion } from '../../core/matching/workflow';
 import { FieldCard } from '../components/FieldCard';
-import { CheckCircle2, AlertCircle, ShieldAlert, Undo2, Sparkles, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, Check, RefreshCw, Undo2, FileText } from 'lucide-react';
 
 interface ApplyViewProps {
   fields: DetectedField[];
   opportunity: PageOpportunity | null;
   profile: UserProfile;
-  onFillSafeFields: () => Promise<void>;
+  onFillSafeFields: (resumeId?: string) => Promise<void>;
   onFillSingle: (field: DetectedField) => Promise<void>;
   onUndo: () => Promise<void>;
   canUndo: boolean;
@@ -16,348 +18,119 @@ interface ApplyViewProps {
   onGoToQuestions: (field?: DetectedField) => void;
   isFilling: boolean;
   lastFillMessage?: string;
+  connectionStatus?: 'connected' | 'restricted' | 'unconnected' | 'idle';
+  activeTabUrl?: string;
+  onReloadPage?: () => void;
+  onOpenProfile: () => void;
+  analysis: FormAnalysisState;
+  onAnalyze: () => void;
 }
 
 export const ApplyView: React.FC<ApplyViewProps> = ({
-  fields,
-  opportunity,
-  profile,
-  onFillSafeFields,
-  onFillSingle,
-  onUndo,
-  canUndo,
-  onHighlight,
-  onGoToQuestions,
-  isFilling,
-  lastFillMessage,
+  fields, opportunity, profile, onFillSafeFields, onFillSingle, onUndo, canUndo,
+  onHighlight, onGoToQuestions, isFilling, lastFillMessage,
+  connectionStatus = 'connected', onReloadPage, onOpenProfile, analysis, onAnalyze,
 }) => {
-  const [filterMode, setFilterMode] = useState<'all' | 'safe' | 'review' | 'questions'>('all');
-  const [selectedResumeId, setSelectedResumeId] = useState<string>(
-    profile.resumes.find((r) => r.isDefault)?.id || profile.resumes[0]?.id || ''
-  );
+  const [filter, setFilter] = useState<'all' | 'ready' | 'review'>('all');
+  const [resumeId, setResumeId] = useState('');
+  const selectedResume = profile.resumes.find((item) => item.id === resumeId) ||
+    profile.resumes.find((item) => item.isDefault) || profile.resumes[0];
+  const busy = analysis.phase === 'scanning' || analysis.phase === 'analyzing';
+  const ready = fields.filter((field) => !field.currentValue && field.sensitivity === 'safe' &&
+    field.proposedValue && (analysis.answers[field.id]?.canFill ?? field.confidence === 'high'));
+  const review = fields.filter((field) => field.fillState === 'review' ||
+    analysis.answers[field.id]?.needsReview);
+  const canAttach = Boolean(selectedResume?.dataUrl && fields.some((field) => field.inputType === 'file'));
+  const hasWrittenQuestions = fields.some((field) => !field.currentValue && isWrittenQuestion(field));
+  const shown = filter === 'ready' ? ready : filter === 'review' ? review : fields;
 
-  const safeFields = fields.filter(
-    (f) => f.confidence === 'high' && f.sensitivity === 'safe' && f.proposedValue
-  );
-  const reviewFields = fields.filter(
-    (f) => f.confidence === 'medium' || (f.confidence === 'low' && f.proposedProfileKey)
-  );
-  const questionFields = fields.filter(
-    (f) => f.inputType === 'textarea' || (f.wordLimit && f.wordLimit > 15)
-  );
-  const blockedFields = fields.filter((f) => f.sensitivity === 'blocked');
-
-  const selectedResume = profile.resumes.find((r) => r.id === selectedResumeId);
+  if (connectionStatus !== 'connected' || (!busy && fields.length === 0)) {
+    const restricted = connectionStatus === 'restricted' || connectionStatus === 'idle';
+    const disconnected = connectionStatus === 'unconnected';
+    return (
+      <div className="ocean-waiting">
+        <div className="ocean-horizon" aria-hidden="true">
+          <svg viewBox="0 0 320 120" fill="none">
+            <path d="M0 78C48 78 61 42 111 42S179 82 224 82s62-28 96-28" stroke="currentColor" strokeWidth="2" />
+            <path d="M0 95c54 0 63-27 115-27s65 30 111 30 68-20 94-20" stroke="currentColor" strokeWidth="1" opacity=".55" />
+          </svg>
+        </div>
+        <span className="ocean-kicker">YOUR NEXT APPLICATION</span>
+        <h1>{disconnected ? 'Reconnect this page.' : restricted ? 'Open a form. We’ll take it from there.' : 'No form on this page.'}</h1>
+        <p>{disconnected
+          ? 'Reload the application page so ApplyGo can read its fields.'
+          : restricted
+          ? 'Go to a job, fellowship, or event application. Your saved details and knowledge will be ready when you get there.'
+          : 'Navigate to an application, or scan again once its fields have loaded.'}</p>
+        {disconnected && onReloadPage ? (
+          <button className="ocean-primary" onClick={onReloadPage}>Reload page <RefreshCw size={16} /></button>
+        ) : !restricted ? (
+          <button className="ocean-primary" onClick={onAnalyze}>Scan again <RefreshCw size={16} /></button>
+        ) : null}
+        <div className="ocean-setup-links">
+          <button onClick={onOpenProfile}>Check your profile <ArrowUpRight size={15} /></button>
+        </div>
+        <div className="ocean-local-note">Your profile stays on this device.</div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '14px' }}>
-      {/* Opportunity Overview Banner */}
-      <div
-        style={{
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)',
-          backgroundColor: 'var(--bg-surface)',
-          padding: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <div>
-            <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
-              Detected Target
-            </span>
-            <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>
-              {opportunity?.opportunityName || 'Application Page'}
-            </div>
-            {opportunity?.organization && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                {opportunity.organization}
-              </div>
-            )}
-          </div>
-          <span
-            style={{
-              fontSize: '11px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              backgroundColor: 'var(--bg-surface-elevated)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
-            {opportunity?.detectedPlatform || 'standard'}
-          </span>
-        </div>
+    <div className="ocean-apply">
+      <div className="ocean-application-title">
+        <span className="ocean-kicker">{opportunity?.organization || 'CURRENT APPLICATION'}</span>
+        <h1>{opportunity?.opportunityName || 'Application form'}</h1>
+        <p>{fields.length} fields on this page</p>
+      </div>
 
-        {/* Resume Selector */}
-        {profile.resumes.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-            <FileText size={14} color="var(--text-muted)" />
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Resume:</span>
-            <select
-              value={selectedResumeId}
-              onChange={(e) => setSelectedResumeId(e.target.value)}
-              style={{
-                fontSize: '11px',
-                padding: '2px 6px',
-                backgroundColor: 'var(--bg-surface-elevated)',
-                flex: 1,
-              }}
-            >
-              {profile.resumes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} {r.isDefault ? '(Default)' : ''}
-                </option>
-              ))}
+      <section className="ocean-workflow" aria-live="polite">
+        <div className="ocean-workflow-title">
+          {busy ? <RefreshCw size={17} className="spin" /> : <Check size={18} />}
+          <h2>{busy ? analysis.phase === 'scanning' ? 'Reading your form' : 'Preparing your answers' : review.length ? 'Ready, with a few things to review' : 'Ready to apply'}</h2>
+        </div>
+        <p>{busy ? analysis.currentLabel || 'Matching fields with your profile and knowledge.' :
+          `Basic details fill automatically, without AI. ${review.length ? `${review.length} fields need your input.` : 'Generate written answers when you’re ready.'}`}</p>
+        {busy && analysis.total > 0 && (
+          <div className="ocean-progress" role="progressbar" aria-valuemin={0} aria-valuemax={analysis.total} aria-valuenow={analysis.completed}>
+            <span style={{ width: `${analysis.completed / analysis.total * 100}%` }} />
+          </div>
+        )}
+        {busy && <span className="ocean-progress-label">{analysis.total ? `${analysis.completed} of ${analysis.total} prepared` : 'Reading labels and instructions…'}</span>}
+        {profile.resumes.length > 0 && !busy && (
+          <label className="ocean-resume"><FileText size={16} /><span>Resume</span>
+            <select aria-label="Resume for this application" value={selectedResume?.id || ''}
+              onChange={(event) => setResumeId(event.target.value)}>
+              {profile.resumes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
-          </div>
+          </label>
         )}
-      </div>
-
-      {/* Statistics Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '6px',
-        }}
-      >
-        <div
-          onClick={() => setFilterMode('all')}
-          style={{
-            border: `1px solid ${filterMode === 'all' ? 'var(--accent-primary)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--bg-surface)',
-            padding: '8px 4px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-            {fields.length}
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Detected</div>
-        </div>
-
-        <div
-          onClick={() => setFilterMode('safe')}
-          style={{
-            border: `1px solid ${filterMode === 'safe' ? 'var(--success)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--bg-surface)',
-            padding: '8px 4px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--success)' }}>
-            {safeFields.length}
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Safe Match</div>
-        </div>
-
-        <div
-          onClick={() => setFilterMode('review')}
-          style={{
-            border: `1px solid ${filterMode === 'review' ? 'var(--warning)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--bg-surface)',
-            padding: '8px 4px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--warning)' }}>
-            {reviewFields.length}
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Review</div>
-        </div>
-
-        <div
-          onClick={() => setFilterMode('questions')}
-          style={{
-            border: `1px solid ${filterMode === 'questions' ? 'var(--accent-primary)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--bg-surface)',
-            padding: '8px 4px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-            {questionFields.length}
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Written Qs</div>
-        </div>
-      </div>
-
-      {/* Primary Actions Area */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <button
-          onClick={onFillSafeFields}
-          disabled={isFilling || safeFields.length === 0}
-          style={{
-            height: '44px', // 44px accessible target
-            backgroundColor: safeFields.length > 0 ? 'var(--accent-primary)' : 'var(--bg-surface-elevated)',
-            color: safeFields.length > 0 ? '#ffffff' : 'var(--text-muted)',
-            borderRadius: 'var(--radius-md)',
-            fontWeight: 600,
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            transition: 'background-color 0.15s ease',
-          }}
-        >
-          <CheckCircle2 size={16} />
-          {isFilling
-            ? 'Filling safe fields...'
-            : safeFields.length > 0
-            ? `Fill safe fields (${safeFields.length})`
-            : 'No high-confidence fields to fill'}
+        <button className="ocean-primary" disabled={busy || isFilling || (!ready.length && !canAttach && !hasWrittenQuestions)}
+          onClick={() => onFillSafeFields(selectedResume?.id)}>
+          {isFilling ? 'Filling one field at a time…' : busy ? 'Preparing answers…' : 'Generate & Fill'}
+          {!busy && !isFilling && <ArrowRight size={18} />}
         </button>
+        {!busy && <div className="ocean-workflow-footer">
+          <button onClick={onAnalyze}><RefreshCw size={13} /> Rescan form</button>
+          {canUndo && <button onClick={onUndo}><Undo2 size={14} /> Undo fill</button>}
+          <span>Review before submitting</span>
+        </div>}
+      </section>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => setFilterMode(filterMode === 'review' ? 'all' : 'review')}
-            style={{
-              flex: 1,
-              height: '36px',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--bg-surface)',
-              fontSize: '12px',
-              fontWeight: 500,
-              color: 'var(--text-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-            }}
-          >
-            <AlertCircle size={14} color="var(--warning)" />
-            Review matches ({reviewFields.length})
-          </button>
-
-          {canUndo && (
-            <button
-              onClick={onUndo}
-              style={{
-                height: '36px',
-                padding: '0 12px',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--bg-surface)',
-                fontSize: '12px',
-                fontWeight: 500,
-                color: 'var(--text-secondary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              <Undo2 size={14} /> Undo fill
+      {lastFillMessage && <div className="ocean-fill-result" role="status"><Check size={16} />{lastFillMessage}</div>}
+      {fields.length > 0 && <section className="ocean-fields">
+        <div className="ocean-field-filters" aria-label="Filter fields">
+          {(['all', 'ready', 'review'] as const).map((mode) => (
+            <button key={mode} aria-pressed={filter === mode} onClick={() => setFilter(mode)}>
+              {mode === 'all' ? 'All fields' : mode === 'ready' ? 'Ready' : 'Needs review'}
+              <span>{mode === 'all' ? fields.length : mode === 'ready' ? ready.length : review.length}</span>
             </button>
-          )}
+          ))}
         </div>
-      </div>
-
-      {lastFillMessage && (
-        <div
-          style={{
-            padding: '8px 12px',
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--success-bg)',
-            border: '1px solid var(--success-border)',
-            color: 'var(--success)',
-            fontSize: '12px',
-          }}
-        >
-          {lastFillMessage}
-        </div>
-      )}
-
-      {/* Field List Container */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-            {filterMode === 'all'
-              ? `All Detected Fields (${fields.length})`
-              : filterMode === 'safe'
-              ? `Safe Fields (${safeFields.length})`
-              : filterMode === 'review'
-              ? `Fields Requiring Review (${reviewFields.length})`
-              : `Written Questions (${questionFields.length})`}
-          </span>
-          {filterMode !== 'all' && (
-            <button
-              onClick={() => setFilterMode('all')}
-              style={{ fontSize: '11px', color: 'var(--accent-primary)' }}
-            >
-              Show all
-            </button>
-          )}
-        </div>
-
-        {fields.length === 0 ? (
-          <div
-            style={{
-              padding: '24px 16px',
-              textAlign: 'center',
-              border: '1px dashed var(--border)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-muted)',
-              fontSize: '12px',
-            }}
-          >
-            No form fields detected on this page yet. Click the refresh button above or navigate to an application page.
-          </div>
-        ) : (
-          (filterMode === 'all'
-            ? fields
-            : filterMode === 'safe'
-            ? safeFields
-            : filterMode === 'review'
-            ? reviewFields
-            : questionFields
-          ).map((field) => (
-            <FieldCard
-              key={field.id}
-              field={field}
-              onFillSingle={onFillSingle}
-              onHighlight={onHighlight}
-              onSelectForQuestions={onGoToQuestions}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Blocked Sensitive Fields Accordion / Disclaimer */}
-      {blockedFields.length > 0 && (
-        <div
-          style={{
-            marginTop: '8px',
-            padding: '10px 12px',
-            borderRadius: 'var(--radius-md)',
-            backgroundColor: 'var(--danger-bg)',
-            border: '1px solid var(--danger-border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)', fontWeight: 600, fontSize: '12px' }}>
-            <ShieldAlert size={14} />
-            <span>Sensitive & Blocked Fields Protected ({blockedFields.length})</span>
-          </div>
-          <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-            Passwords, payment cards, national IDs, and legal consent checkboxes are automatically blocked from autofill.
-          </p>
-        </div>
-      )}
+        {shown.map((field) => <FieldCard key={field.id} field={field}
+          onFillSingle={onFillSingle} onHighlight={onHighlight}
+          onSelectForQuestions={onGoToQuestions} onOpenProfile={onOpenProfile} />)}
+        {!shown.length && <p className="ocean-filter-empty">No fields in this view.</p>}
+      </section>}
     </div>
   );
 };

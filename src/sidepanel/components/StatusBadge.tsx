@@ -7,7 +7,7 @@ export const ConfidenceBadge: React.FC<{ confidence: MatchConfidence }> = ({ con
   let label = 'Low';
 
   if (confidence === 'high') {
-    bg = 'rgba(16, 185, 129, 0.15)';
+    bg = 'rgba(49, 125, 159, 0.15)';
     color = 'var(--success)';
     label = 'High Match';
   } else if (confidence === 'medium') {
@@ -25,14 +25,13 @@ export const ConfidenceBadge: React.FC<{ confidence: MatchConfidence }> = ({ con
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        padding: '2px 6px',
-        borderRadius: 'var(--radius-sm)',
+        padding: '3px 8px',
+        borderRadius: 'var(--radius-full)',
         fontSize: '10px',
-        fontWeight: 600,
+        fontWeight: 500,
         backgroundColor: bg,
         color,
-        textTransform: 'uppercase',
-        letterSpacing: '0.4px',
+        letterSpacing: '0.2px',
       }}
     >
       {label}

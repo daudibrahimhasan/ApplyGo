@@ -17,29 +17,49 @@ export function injectFloatingLauncher(): void {
     .launcher-btn {
       display: flex;
       align-items: center;
-      gap: 6px;
-      background: #0f172a;
-      color: #f8fafc;
-      border: 1px solid #334155;
+      gap: 8px;
+      background: #edf5f9;
+      color: #103f63;
+      border: 1px solid #b4d1e1;
       border-right: none;
       padding: 8px 12px 8px 10px;
       border-radius: 8px 0 0 8px;
       cursor: pointer;
       font-size: 12px;
       font-weight: 500;
+      min-height: 44px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-      transition: transform 0.15s ease, background 0.15s ease;
+      transition: background 0.15s ease;
       user-select: none;
     }
     .launcher-btn:hover {
-      background: #1e293b;
-      transform: translateX(-3px);
+      background: #dcecf5;
+    }
+    .launcher-btn:focus-visible {
+      outline: 2px solid #103f63;
+      outline-offset: 2px;
+    }
+    .launcher-status {
+      display: none;
+      position: absolute;
+      right: 8px;
+      top: 100%;
+      margin-top: 8px;
+      width: 220px;
+      padding: 10px;
+      background: #edf5f9;
+      color: #103f63;
+      border: 1px solid #b4d1e1;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.5;
     }
     .launcher-icon {
-      width: 14px;
-      height: 14px;
-      border-radius: 3px;
-      background: #3b82f6;
+      width: 22px;
+      height: 22px;
+      background: transparent;
+      padding: 0;
+      object-fit: contain;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -51,19 +71,45 @@ export function injectFloatingLauncher(): void {
 
   const button = document.createElement('button');
   button.className = 'launcher-btn';
-  button.title = 'Open GroundedApply side panel';
+  button.type = 'button';
+  button.setAttribute('aria-label', 'Open ApplyGo side panel');
+  button.title = 'Open ApplyGo side panel';
   button.innerHTML = `
-    <div class="launcher-icon">G</div>
-    <span>GroundedApply</span>
+    <img class="launcher-icon" src="${chrome.runtime.getURL('public/icons/icon48.png')}" alt="" />
   `;
 
-  button.addEventListener('click', () => {
-    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL_REQUEST' });
+  const status = document.createElement('div');
+  status.className = 'launcher-status';
+  status.setAttribute('role', 'alert');
+  const showFailure = (error: string) => {
+    button.dataset.openState = 'failed';
+    button.title = error;
+    status.textContent = error;
+    status.style.display = 'block';
+  };
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    status.style.display = 'none';
+    button.dataset.openState = 'opening';
+    try {
+      // Send directly from the click. No asynchronous work before requesting the panel.
+      chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL_REQUEST' }, (response) => {
+        const error = chrome.runtime.lastError;
+        if (error) showFailure('Reload this page, then try GA again. The extension connection was lost.');
+        else if (!response?.success) showFailure(`${response?.error || 'Chrome could not open the panel.'} Click the GA toolbar icon to open it.`);
+        else {
+          button.dataset.openState = 'opened';
+          button.title = 'Open ApplyGo side panel';
+        }
+      });
+    } catch {
+      showFailure('Reload this page, then try GA again. The extension was updated or reloaded.');
     }
   });
 
   shadow.appendChild(style);
   shadow.appendChild(button);
+  shadow.appendChild(status);
   document.documentElement.appendChild(host);
 }

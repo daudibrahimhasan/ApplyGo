@@ -1,5 +1,32 @@
+/**
+ * Platform Adapters — Detection & Title Extraction Only
+ *
+ * These adapters identify which application platform a page belongs to
+ * (Greenhouse, Lever, Workday, etc.) and extract the opportunity title
+ * and organization name from platform-specific DOM selectors.
+ *
+ * IMPORTANT: Adapters do NOT implement:
+ * - Platform-specific form scanning or custom control handling
+ * - Step/page navigation for multi-step application flows
+ * - Platform-specific filling strategies
+ * - Tested end-to-end workflows on any specific platform
+ *
+ * All form scanning and filling is handled by the single generic engine
+ * in scanner.ts and filler.ts, which works on standard HTML form controls.
+ * Platform adapters only provide better opportunity metadata when a
+ * recognized platform is detected.
+ *
+ * The `supportLevel` field on each adapter honestly documents this:
+ * - 'detection-only': hostname matching + title extraction (current state)
+ * - 'full': tested custom scanning, control handling, and filling (future)
+ */
+
+export type AdapterSupportLevel = 'detection-only' | 'full';
+
 export interface PlatformAdapter {
   name: string;
+  /** What this adapter actually implements. See module-level JSDoc. */
+  supportLevel: AdapterSupportLevel;
   matches(url: string, doc: Document): boolean;
   extractOpportunity(doc: Document): {
     organization?: string;
@@ -9,9 +36,10 @@ export interface PlatformAdapter {
   customFieldSelector?: string;
 }
 
-// 1. Standard Adapter
+// 1. Standard Adapter (generic fallback)
 export const standardAdapter: PlatformAdapter = {
   name: 'standard',
+  supportLevel: 'detection-only',
   matches: () => true,
   extractOpportunity: (doc) => {
     const title = doc.title || '';
@@ -26,6 +54,7 @@ export const standardAdapter: PlatformAdapter = {
 // 2. Google Forms
 export const googleFormsAdapter: PlatformAdapter = {
   name: 'googleForms',
+  supportLevel: 'detection-only',
   matches: (url) => url.includes('docs.google.com/forms'),
   extractOpportunity: (doc) => {
     const title = doc.querySelector('.F9vfv, [role="heading"][aria-level="1"]')?.textContent?.trim() || doc.title;
@@ -36,9 +65,10 @@ export const googleFormsAdapter: PlatformAdapter = {
   },
 };
 
-// 3. Greenhouse
+// 3. Greenhouse (detection + title extraction only)
 export const greenhouseAdapter: PlatformAdapter = {
   name: 'greenhouse',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('boards.greenhouse.io') ||
     url.includes('grnh.se') ||
@@ -54,9 +84,10 @@ export const greenhouseAdapter: PlatformAdapter = {
   },
 };
 
-// 4. Lever
+// 4. Lever (detection + title extraction only)
 export const leverAdapter: PlatformAdapter = {
   name: 'lever',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('jobs.lever.co') || Boolean(doc.querySelector('.application-form, .posting-headline')),
   extractOpportunity: (doc) => {
@@ -70,9 +101,10 @@ export const leverAdapter: PlatformAdapter = {
   },
 };
 
-// 5. Ashby
+// 5. Ashby (detection + title extraction only)
 export const ashbyAdapter: PlatformAdapter = {
   name: 'ashby',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('jobs.ashbyhq.com') || Boolean(doc.querySelector('div[class*="ashby"]')),
   extractOpportunity: (doc) => {
@@ -84,9 +116,10 @@ export const ashbyAdapter: PlatformAdapter = {
   },
 };
 
-// 6. Workable
+// 6. Workable (detection + title extraction only)
 export const workableAdapter: PlatformAdapter = {
   name: 'workable',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('apply.workable.com') || Boolean(doc.querySelector('[data-ui="application-form"]')),
   extractOpportunity: (doc) => {
@@ -100,9 +133,10 @@ export const workableAdapter: PlatformAdapter = {
   },
 };
 
-// 7. SmartRecruiters
+// 7. SmartRecruiters (detection + title extraction only)
 export const smartRecruitersAdapter: PlatformAdapter = {
   name: 'smartRecruiters',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('smartrecruiters.com') || Boolean(doc.querySelector('oc-form, .st-apply')),
   extractOpportunity: (doc) => {
@@ -116,9 +150,10 @@ export const smartRecruitersAdapter: PlatformAdapter = {
   },
 };
 
-// 8. Fillout
+// 8. Fillout (detection + title extraction only)
 export const filloutAdapter: PlatformAdapter = {
   name: 'fillout',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('fillout.com') || Boolean(doc.querySelector('[id*="fillout"]')),
   extractOpportunity: (doc) => {
@@ -130,9 +165,10 @@ export const filloutAdapter: PlatformAdapter = {
   },
 };
 
-// 9. Typeform
+// 9. Typeform (detection + title extraction only)
 export const typeformAdapter: PlatformAdapter = {
   name: 'typeform',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('typeform.com') || Boolean(doc.querySelector('[data-qa*="typeform"]')),
   extractOpportunity: (doc) => {
@@ -144,9 +180,10 @@ export const typeformAdapter: PlatformAdapter = {
   },
 };
 
-// 10. Workday (Best Effort)
+// 10. Workday (detection + title extraction only — best effort)
 export const workdayAdapter: PlatformAdapter = {
   name: 'workday',
+  supportLevel: 'detection-only',
   matches: (url, doc) =>
     url.includes('myworkdayjobs.com') ||
     url.includes('workday.com') ||

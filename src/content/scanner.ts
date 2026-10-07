@@ -4,6 +4,7 @@ import { extractFieldSignals } from './signals';
 import { evaluateFieldSensitivity } from '../core/security/sensitiveDetector';
 import { matchFieldToProfile } from '../core/matching/matcher';
 import { findMatchingAdapter } from './adapters';
+import { readFieldValue } from './fieldValue';
 
 export function getUniqueSelector(el: HTMLElement): string {
   if (el.id && !/^\d/.test(el.id)) {
@@ -69,6 +70,7 @@ function classifyInputType(el: HTMLElement): InputType {
   const tag = el.tagName.toLowerCase();
   if (tag === 'textarea') return 'textarea';
   if (tag === 'select') return 'select';
+  if (el.getAttribute('role') === 'textbox' || el.getAttribute('contenteditable') === 'true') return 'textarea';
 
   const role = el.getAttribute('role');
   if (role === 'combobox') return 'combobox';
@@ -142,14 +144,22 @@ export function scanPageForFields(profile: UserProfile): {
     'textarea',
     'select',
     '[role="combobox"]',
+    '[role="textbox"]',
+    '[contenteditable="true"]',
   ].join(', ');
 
-  const elements = Array.from(document.querySelectorAll<HTMLElement>(query));
+  const elements = Array.from(document.querySelectorAll<HTMLElement>(query)).filter((element) => {
+    // A wrapper and its native input are one answer, not two detected fields.
+    if (element.matches('[role="textbox"], [contenteditable="true"]') && element.querySelector('input, textarea')) return false;
+    if (element.matches('input') && element.closest('[role="combobox"]')) return false;
+    return true;
+  });
   const detected: DetectedField[] = [];
 
   elements.forEach((el, index) => {
     if (!isElementVisible(el)) return;
     if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return;
+    if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true') return;
 
     // Check honeypot attributes
     if (el.getAttribute('tabindex') === '-1' && !el.getAttribute('aria-label')) {
@@ -160,7 +170,7 @@ export function scanPageForFields(profile: UserProfile): {
     const selector = getUniqueSelector(el);
     const domId = el.id || '';
     const name = el.getAttribute('name') || '';
-    const currentValue = 'value' in el ? String((el as HTMLInputElement).value || '') : '';
+    const currentValue = readFieldValue(el);
     const required = el.hasAttribute('required') || el.getAttribute('aria-required') === 'true';
 
     const signals = extractFieldSignals(el);
@@ -207,6 +217,10 @@ export function scanPageForFields(profile: UserProfile): {
     field.matchReason = match.matchReason;
     field.confidence = match.confidence;
     field.fillState = match.fillState;
+    if (match.confidence === 'low' && !signals.label && !signals.ariaLabel && !signals.placeholder && !match.proposedProfileKey) {
+      field.fillState = 'review';
+      field.matchReason = 'This box was detected, but its question label could not be read. Review it manually.';
+    }
 
     detected.push(field);
   });

@@ -4,7 +4,7 @@ export const EducationRecordSchema = z.object({
   id: z.string(),
   school: z.string().min(1, 'School is required'),
   degree: z.string().min(1, 'Degree is required'),
-  fieldOfStudy: z.string().min(1, 'Field of study is required'),
+  fieldOfStudy: z.string().default(''),
   gpa: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -71,12 +71,12 @@ export const LeadershipRecordSchema = z.object({
 export type LeadershipRecord = z.infer<typeof LeadershipRecordSchema>;
 
 export const AuthorizationProfileSchema = z.object({
-  workAuthUS: z.boolean().default(false),
-  requiresSponsorshipUS: z.boolean().default(true),
-  workAuthUK: z.boolean().default(false),
-  requiresSponsorshipUK: z.boolean().default(true),
-  workAuthEU: z.boolean().default(false),
-  requiresSponsorshipEU: z.boolean().default(true),
+  workAuthUS: z.boolean().nullable().default(null),
+  requiresSponsorshipUS: z.boolean().nullable().default(null),
+  workAuthUK: z.boolean().nullable().default(null),
+  requiresSponsorshipUK: z.boolean().nullable().default(null),
+  workAuthEU: z.boolean().nullable().default(null),
+  requiresSponsorshipEU: z.boolean().nullable().default(null),
   otherCountries: z
     .array(
       z.object({
@@ -93,8 +93,8 @@ export const AvailabilityProfileSchema = z.object({
   earliestStartDate: z.string().optional(),
   noticePeriod: z.string().optional(),
   preferredLocations: z.array(z.string()).default([]),
-  remotePreference: z.enum(['remote', 'hybrid', 'onsite', 'any']).default('any'),
-  fullTime: z.boolean().default(true),
+  remotePreference: z.enum(['remote', 'hybrid', 'onsite', 'any']).nullable().default(null),
+  fullTime: z.boolean().nullable().default(null),
 });
 export type AvailabilityProfile = z.infer<typeof AvailabilityProfileSchema>;
 
@@ -157,18 +157,18 @@ export const UserProfileSchema = z.object({
   awards: z.array(AwardRecordSchema).default([]),
   leadership: z.array(LeadershipRecordSchema).default([]),
   authorization: AuthorizationProfileSchema.default({
-    workAuthUS: false,
-    requiresSponsorshipUS: true,
-    workAuthUK: false,
-    requiresSponsorshipUK: true,
-    workAuthEU: false,
-    requiresSponsorshipEU: true,
+    workAuthUS: null,
+    requiresSponsorshipUS: null,
+    workAuthUK: null,
+    requiresSponsorshipUK: null,
+    workAuthEU: null,
+    requiresSponsorshipEU: null,
     otherCountries: [],
   }),
   availability: AvailabilityProfileSchema.default({
     preferredLocations: [],
-    remotePreference: 'any',
-    fullTime: true,
+    remotePreference: null,
+    fullTime: null,
   }),
   preferences: OpportunityPreferencesSchema.default({
     types: [],
@@ -179,3 +179,12 @@ export const UserProfileSchema = z.object({
   updatedAt: z.string(),
 });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
+
+export type ProfilePartialUpdate = {
+  personal?: Partial<UserProfile['personal']>;
+  education?: EducationRecord[];
+  skills?: string[];
+  links?: Partial<UserProfile['links']>;
+  authorization?: Partial<UserProfile['authorization']>;
+  availability?: Partial<UserProfile['availability']>;
+};

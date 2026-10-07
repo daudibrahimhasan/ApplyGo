@@ -1,11 +1,10 @@
 import { DetectedField, PageOpportunity, FillTransaction } from '../schemas/fields';
-import { GenerationRequest, GeneratedAnswer } from '../schemas/generation';
-import { ExtensionSettings } from '../schemas/settings';
 
 export type MessageType =
   | 'PING'
   | 'SCAN_PAGE_REQUEST'
   | 'SCAN_PAGE_RESPONSE'
+  | 'FORM_CHANGED'
   | 'FILL_FIELDS_REQUEST'
   | 'FILL_FIELDS_RESPONSE'
   | 'FILL_SINGLE_FIELD_REQUEST'
@@ -19,6 +18,8 @@ export type MessageType =
   | 'TEST_API_KEY_RESPONSE'
   | 'GET_SETTINGS_REQUEST'
   | 'GET_SETTINGS_RESPONSE'
+  | 'GET_PROFILE_FOR_SCAN_REQUEST'
+  | 'GET_PROFILE_FOR_SCAN_RESPONSE'
   | 'SAVE_SETTINGS_REQUEST'
   | 'SAVE_SETTINGS_RESPONSE'
   | 'OPEN_SIDE_PANEL_REQUEST';
@@ -36,7 +37,15 @@ export interface ScanPageResponsePayload {
 }
 
 export interface FillFieldsRequestPayload {
+  expectedUrl?: string;
   fields: Array<{ id: string; selector: string; value: string }>;
+  fillDelayMs?: number;
+  resume?: {
+    selector: string;
+    name: string;
+    fileType: 'pdf' | 'docx';
+    dataUrl: string;
+  };
 }
 
 export interface FillFieldsResponsePayload {
@@ -61,6 +70,7 @@ export interface TestApiKeyRequestPayload {
   apiKey: string;
   baseUrl: string;
   model: string;
+  timeoutMs?: number;
 }
 
 export interface TestApiKeyResponsePayload {

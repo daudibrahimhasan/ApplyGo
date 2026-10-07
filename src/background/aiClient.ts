@@ -1,4 +1,4 @@
-import { GenerationRequest, GeneratedAnswer } from '../shared/schemas/generation';
+import { GenerationRequest } from '../shared/schemas/generation';
 import { KnowledgeEntry, PreviousAnswer } from '../shared/schemas/knowledge';
 import { UserProfile } from '../shared/schemas/profile';
 import { GROUNDED_APPLY_SYSTEM_PROMPT } from '../core/generation/systemPrompt';
@@ -24,20 +24,30 @@ export class AiClient {
       return { success: false, message: 'API key is missing. Please enter your API key in Settings.' };
     }
 
-    const endpoint = `${this.config.baseUrl.replace(/\/+$/, '')}/models`;
+    const endpoint = `${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const timeoutMs = Math.max(5000, this.config.timeoutMs || 45000);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
+      timer = setTimeout(() => controller.abort(), timeoutMs);
 
       const res = await fetch(endpoint, {
-        method: 'GET',
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${this.config.apiKey}`,
         },
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [{ role: 'user', content: 'Reply with exactly OK.' }],
+          max_tokens: 16,
+          temperature: 0,
+          ...(this.config.baseUrl.includes('generativelanguage.googleapis.com')
+            ? { reasoning_effort: 'low' }
+            : {}),
+        }),
         signal: controller.signal,
       });
-      clearTimeout(timer);
-
       if (!res.ok) {
         const errorText = await res.text().catch(() => '');
         return {
@@ -46,21 +56,38 @@ export class AiClient {
         };
       }
 
-      const data = (await res.json()) as { data?: Array<{ id: string }> };
-      const modelNames = data.data?.map((m) => m.id).slice(0, 10) || [];
+      const data = (await res.json()) as {
+        choices?: Array<{
+          message?: { content?: string | Array<{ type?: string; text?: string }> };
+        }>;
+      };
+      const content = data.choices?.[0]?.message?.content;
+      const visibleText = Array.isArray(content)
+        ? content.map((part) => part.text || '').join('').trim()
+        : content?.trim();
+      if (!visibleText) {
+        return {
+          success: false,
+          message: `The provider responded, but model "${this.config.model}" returned no text.`,
+        };
+      }
       return {
         success: true,
-        message: 'Successfully connected to OpenAI-compatible provider.',
-        models: modelNames,
+        message: `Connected. Model "${this.config.model}" generated a test response and the settings were saved.`,
       };
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        return { success: false, message: 'Connection test timed out after 10 seconds.' };
+        return {
+          success: false,
+          message: `Connection test timed out after ${Math.round(timeoutMs / 1000)} seconds.`,
+        };
       }
       return {
         success: false,
         message: `Network error connecting to ${endpoint}: ${err?.message || String(err)}`,
       };
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -75,7 +102,7 @@ export class AiClient {
     if (!this.config.apiKey) {
       return {
         isValid: false,
-        errors: ['API key is not configured. Please add your key in GroundedApply Settings.'],
+        errors: ['API key is not configured. Please add your key in ApplyGo Settings.'],
         wordCount: 0,
         characterCount: 0,
         canInsertDirectly: false,
@@ -156,6 +183,9 @@ export class AiClient {
         },
       },
       temperature: this.config.temperature ?? 0.7,
+      ...(this.config.baseUrl.includes('generativelanguage.googleapis.com')
+        ? { reasoning_effort: 'low' }
+        : {}),
     };
 
     const endpoint = `${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
@@ -166,15 +196,39 @@ export class AiClient {
 
     let rawOutput: any;
     try {
-      let res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify(bodyPayload),
-        signal: controller.signal,
-      });
+      const requestCompletion = async (payload: Record<string, unknown>): Promise<Response> => {
+        let response: Response | undefined;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.config.apiKey}`,
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+
+          if (![429, 502, 503, 504].includes(response.status) || attempt === 2) {
+            return response;
+          }
+
+          const retryAfterSeconds = Number(response.headers?.get?.('retry-after'));
+          const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? Math.min(retryAfterSeconds * 1000, 5000)
+            : 800 * (attempt + 1);
+          await new Promise<void>((resolve, reject) => {
+            const retryTimer = setTimeout(resolve, retryDelay);
+            controller.signal.addEventListener('abort', () => {
+              clearTimeout(retryTimer);
+              reject(new DOMException('Request aborted', 'AbortError'));
+            }, { once: true });
+          });
+        }
+        return response!;
+      };
+
+      let res = await requestCompletion(bodyPayload);
 
       // Fallback for providers that don't support structured json_schema: try standard json_object
       if (!res.ok && res.status === 400) {
@@ -182,15 +236,7 @@ export class AiClient {
           ...bodyPayload,
           response_format: { type: 'json_object' },
         };
-        res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.config.apiKey}`,
-          },
-          body: JSON.stringify(fallbackBody),
-          signal: controller.signal,
-        });
+        res = await requestCompletion(fallbackBody);
       }
 
       clearTimeout(timer);
@@ -220,7 +266,7 @@ export class AiClient {
 
       try {
         rawOutput = JSON.parse(rawContent);
-      } catch (jsonErr) {
+      } catch {
         return {
           isValid: false,
           errors: ['Model response could not be parsed as JSON.'],

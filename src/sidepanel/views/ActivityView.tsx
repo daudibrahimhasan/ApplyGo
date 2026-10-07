@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ApplicationHistory } from '../../shared/schemas/application';
-import { History, ExternalLink, Edit3, CheckCircle, Clock } from 'lucide-react';
+import { History, ExternalLink } from 'lucide-react';
 
 interface ActivityViewProps {
   applications: ApplicationHistory[];
@@ -11,7 +11,6 @@ export const ActivityView: React.FC<ActivityViewProps> = ({
   applications,
   onUpdateApplication,
 }) => {
-  const [editingId, setEditingId] = useState<string | null>(null);
 
   const statuses: ApplicationHistory['status'][] = [
     'draft',
@@ -36,7 +35,7 @@ export const ActivityView: React.FC<ActivityViewProps> = ({
           <History size={24} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
           <p>No tracked applications yet.</p>
           <p style={{ fontSize: '11px', marginTop: '4px' }}>
-            When you scan and fill forms, GroundedApply records your progress locally.
+            When you scan and fill forms, ApplyGo records your progress locally.
           </p>
         </div>
       ) : (

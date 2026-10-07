@@ -1,9 +1,11 @@
-import { UserProfile, UserProfileSchema } from '../schemas/profile';
+import { UserProfile, UserProfileSchema, ProfilePartialUpdate } from '../schemas/profile';
 import { KnowledgeEntry, PreviousAnswer } from '../schemas/knowledge';
 import { ApplicationHistory } from '../schemas/application';
 import { ExtensionSettings, ExtensionSettingsSchema } from '../schemas/settings';
 import { defaultProfile } from './defaultProfile';
 import { defaultKnowledge } from './defaultKnowledge';
+import { DEFAULT_GEMINI_MODEL, normalizeGeminiModel } from '../aiModels';
+import { recoverProfile } from './recoverProfile';
 
 const STORAGE_KEYS = {
   PROFILE: 'grounded_apply_profile',
@@ -52,12 +54,18 @@ export const Storage = {
   async getProfile(): Promise<UserProfile> {
     const raw = await getStorageItem<UserProfile>(STORAGE_KEYS.PROFILE, defaultProfile);
     const parsed = UserProfileSchema.safeParse(raw);
-    return parsed.success ? parsed.data : defaultProfile;
+    if (parsed.success) return parsed.data;
+    // Preserve the original before migrating old malformed profiles.
+    const backup = await getStorageItem<unknown>('grounded_apply_profile_recovery_backup', null);
+    if (!backup) await setStorageItem('grounded_apply_profile_recovery_backup', raw);
+    const recovered = recoverProfile(raw);
+    await setStorageItem(STORAGE_KEYS.PROFILE, recovered);
+    return recovered;
   },
 
   async saveProfile(profile: UserProfile): Promise<void> {
     profile.updatedAt = new Date().toISOString();
-    await setStorageItem(STORAGE_KEYS.PROFILE, profile);
+    await setStorageItem(STORAGE_KEYS.PROFILE, UserProfileSchema.parse(profile));
   },
 
   async getKnowledge(): Promise<KnowledgeEntry[]> {
@@ -84,6 +92,66 @@ export const Storage = {
     const current = await this.getKnowledge();
     const filtered = current.filter((k) => k.id !== id);
     await this.saveKnowledge(filtered);
+  },
+
+  async importKnowledge(
+    entries: KnowledgeEntry[],
+    mode: 'merge' | 'replace' = 'merge'
+  ): Promise<KnowledgeEntry[]> {
+    if (mode === 'replace') {
+      await this.saveKnowledge(entries);
+      return entries;
+    }
+    const current = await this.getKnowledge();
+    const map = new Map<string, KnowledgeEntry>();
+    for (const e of current) {
+      map.set(e.id, e);
+    }
+    for (const e of entries) {
+      map.set(e.id, e);
+    }
+    const merged = Array.from(map.values());
+    await this.saveKnowledge(merged);
+    return merged;
+  },
+
+  async updateProfilePartial(updates: ProfilePartialUpdate): Promise<UserProfile> {
+    const current = await this.getProfile();
+    const updated: UserProfile = {
+      ...current,
+      personal: {
+        ...current.personal,
+        ...(updates.personal || {}),
+      },
+      links: {
+        ...current.links,
+        ...(updates.links || {}),
+      },
+      education:
+        updates.education && updates.education.length > 0
+          ? [
+              ...current.education,
+              ...updates.education.filter(
+                (e) => !current.education.some((c) => c.school && c.school === e.school)
+              ),
+            ]
+          : current.education,
+      skills:
+        updates.skills && updates.skills.length > 0
+          ? Array.from(new Set([...current.skills, ...updates.skills]))
+          : current.skills,
+      authorization: {
+        ...current.authorization,
+        ...(updates.authorization || {}),
+      },
+      availability: {
+        ...current.availability,
+        ...(updates.availability || {}),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    await this.saveProfile(updated);
+    return updated;
   },
 
   async getPreviousAnswers(): Promise<PreviousAnswer[]> {
@@ -129,24 +197,46 @@ export const Storage = {
   async getSettings(): Promise<ExtensionSettings> {
     const raw = await getStorageItem<Partial<ExtensionSettings>>(STORAGE_KEYS.SETTINGS, {});
     const parsed = ExtensionSettingsSchema.safeParse(raw);
-    return parsed.success
-      ? parsed.data
-      : {
-          apiKey: '',
-          baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-4o',
-          requestTimeoutMs: 45000,
-          autoDetectForms: true,
-          showFloatingLauncher: true,
-          highlightFilledFields: true,
-          fillDelayMs: 40,
-          theme: 'system',
-        };
+    const envApiKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) || '';
+    const envBaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_AI_BASE_URL) || '';
+    const envModel = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_AI_MODEL) || '';
+
+    if (parsed.success) {
+      const settings = {
+        ...parsed.data,
+        apiKey: parsed.data.apiKey || envApiKey,
+        baseUrl: parsed.data.apiKey ? parsed.data.baseUrl : (envBaseUrl || parsed.data.baseUrl),
+        model: parsed.data.apiKey ? parsed.data.model : (envModel || parsed.data.model),
+      };
+      const normalizedModel = normalizeGeminiModel(settings.baseUrl, settings.model);
+      if (normalizedModel !== settings.model) {
+        const migrated = { ...settings, model: normalizedModel };
+        await setStorageItem(STORAGE_KEYS.SETTINGS, migrated);
+        return migrated;
+      }
+      return settings;
+    }
+
+    return {
+      apiKey: envApiKey,
+      baseUrl: envBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      model: normalizeGeminiModel(
+        envBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        envModel || DEFAULT_GEMINI_MODEL
+      ),
+      requestTimeoutMs: 45000,
+      autoDetectForms: true,
+      showFloatingLauncher: true,
+      highlightFilledFields: true,
+      fillDelayMs: 40,
+      theme: 'system',
+    };
   },
 
   async saveSettings(settings: Partial<ExtensionSettings>): Promise<void> {
     const current = await this.getSettings();
     const updated = { ...current, ...settings };
+    updated.model = normalizeGeminiModel(updated.baseUrl, updated.model);
     await setStorageItem(STORAGE_KEYS.SETTINGS, updated);
   },
 

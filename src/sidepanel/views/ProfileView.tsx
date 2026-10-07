@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { UserProfile, EducationRecord, EmploymentRecord, ResearchRecord, ProjectRecord, ResumeRecord } from '../../shared/schemas/profile';
-import { Plus, Trash2, Save, FileText, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { UserProfile, EducationRecord, ResumeRecord } from '../../shared/schemas/profile';
+import { Plus, Save, FileText, Check, ChevronDown, ChevronRight, Upload, Trash2, Star } from 'lucide-react';
 
 interface ProfileViewProps {
   profile: UserProfile;
@@ -10,16 +10,29 @@ interface ProfileViewProps {
 export const ProfileView: React.FC<ProfileViewProps> = ({ profile, onSaveProfile }) => {
   const [formData, setFormData] = useState<UserProfile>(profile);
   const [isSaved, setIsSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<string>('personal');
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const missingProfileItems = [
+    !formData.personal.firstName && 'name',
+    !formData.personal.email && 'email',
+    !formData.links.linkedin && 'LinkedIn URL',
+    !formData.links.github && 'GitHub URL',
+  ].filter(Boolean) as string[];
 
   const toggleSection = (s: string) => {
     setExpandedSection(expandedSection === s ? '' : s);
   };
 
   const handleSave = async () => {
-    await onSaveProfile(formData);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    setSaveError(null);
+    try {
+      await onSaveProfile(formData);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+    } catch {
+      setSaveError('Profile was not saved. Check incomplete education records and other required fields. Your previously saved profile is unchanged.');
+    }
   };
 
   const addEducation = () => {
@@ -34,28 +47,57 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profile, onSaveProfile
     setFormData({ ...formData, education: [...formData.education, newEdu] });
   };
 
-  const addEmployment = () => {
-    const newEmp: EmploymentRecord = {
-      id: `emp_${Date.now()}`,
-      employer: '',
-      role: '',
-      startDate: '',
-      current: false,
-      description: '',
-      highlights: [],
-    };
-    setFormData({ ...formData, employment: [...formData.employment, newEmp] });
+  const saveResumeList = async (resumes: ResumeRecord[]) => {
+    const updated = { ...formData, resumes };
+    setFormData(updated);
+    await onSaveProfile(updated);
   };
 
-  const addProject = () => {
-    const newProj: ProjectRecord = {
-      id: `proj_${Date.now()}`,
-      title: '',
-      description: '',
-      technologies: [],
-      highlights: [],
+  const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setResumeError(null);
+
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'pdf' && extension !== 'docx') {
+      setResumeError('Use a PDF or DOCX resume.');
+      return;
+    }
+    if (file.size > 4.5 * 1024 * 1024) {
+      setResumeError('Resume must be smaller than 4.5 MB so Chrome can store it locally.');
+      return;
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const resume: ResumeRecord = {
+      id: `resume_${Date.now()}`,
+      name: file.name,
+      fileType: extension,
+      dataUrl,
+      tags: [],
+      isDefault: formData.resumes.length === 0,
+      targetRoles: [],
+      updatedAt: new Date().toISOString(),
     };
-    setFormData({ ...formData, projects: [...formData.projects, newProj] });
+    await saveResumeList([...formData.resumes, resume]);
+  };
+
+  const setDefaultResume = async (id: string) => {
+    await saveResumeList(formData.resumes.map((resume) => ({ ...resume, isDefault: resume.id === id })));
+  };
+
+  const removeResume = async (id: string) => {
+    const remaining = formData.resumes.filter((resume) => resume.id !== id);
+    if (remaining.length > 0 && !remaining.some((resume) => resume.isDefault)) {
+      remaining[0] = { ...remaining[0], isDefault: true };
+    }
+    await saveResumeList(remaining);
   };
 
   return (
@@ -68,22 +110,45 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profile, onSaveProfile
         <button
           onClick={handleSave}
           style={{
-            height: '36px',
-            padding: '0 12px',
-            backgroundColor: isSaved ? 'var(--success)' : 'var(--accent-primary)',
+            height: '34px',
+            padding: '0 14px',
+            background: isSaved ? 'var(--success)' : 'var(--accent-gradient)',
             color: '#fff',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-full)',
             fontSize: '12px',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
+            boxShadow: '0 2px 8px rgba(49, 125, 159, 0.25)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
           }}
         >
           {isSaved ? <Check size={14} /> : <Save size={14} />}
           {isSaved ? 'Saved' : 'Save Profile'}
         </button>
       </div>
+
+      {saveError && <p role="alert" style={{ color: 'var(--danger)', fontSize: '12px' }}>{saveError}</p>}
+      {missingProfileItems.length > 0 && (
+        <button
+          onClick={() => setExpandedSection(missingProfileItems.includes('email') ? 'personal' : 'links')}
+          style={{
+            padding: '10px 12px',
+            border: '1px solid var(--warning-border)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--warning-bg)',
+            color: 'var(--text-secondary)',
+            textAlign: 'left',
+            fontSize: '11px',
+            lineHeight: 1.5,
+          }}
+        >
+          <strong style={{ color: 'var(--warning)' }}>Review missing autofill data:</strong>{' '}
+          {missingProfileItems.join(', ')}. No usable values were recovered for these fields. Check their labels in the knowledge base, or add them here.
+        </button>
+      )}
 
       {/* 1. Personal & Contact Info */}
       <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
@@ -151,7 +216,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profile, onSaveProfile
                 <label style={{ fontSize: '10px', color: 'var(--text-muted)' }}>City, State</label>
                 <input
                   type="text"
-                  value={`${formData.personal.city || ''}, ${formData.personal.region || ''}`}
+                  value={[formData.personal.city, formData.personal.region].filter(Boolean).join(', ')}
                   onChange={(e) => {
                     const parts = e.target.value.split(',');
                     setFormData({
@@ -326,6 +391,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profile, onSaveProfile
 
         {expandedSection === 'resumes' && (
           <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'var(--bg-surface-subtle)' }}>
+            <label className="zen-upload-button">
+              <Upload size={14} /> Upload and store resume
+              <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleResumeUpload} hidden />
+            </label>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              Stored locally. The selected default resume is attached when a form has a file-upload field.
+            </span>
+            {resumeError && <span style={{ fontSize: '10px', color: 'var(--danger)' }}>{resumeError}</span>}
             {formData.resumes.map((res) => (
               <div
                 key={res.id}
@@ -347,6 +420,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profile, onSaveProfile
                       Default
                     </span>
                   )}
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {!res.isDefault && (
+                    <button onClick={() => setDefaultResume(res.id)} title="Make default" className="icon-button">
+                      <Star size={13} />
+                    </button>
+                  )}
+                  <button onClick={() => removeResume(res.id)} title="Remove resume" className="icon-button danger">
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               </div>
             ))}

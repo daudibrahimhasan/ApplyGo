@@ -97,6 +97,16 @@ export const FIELD_RULES: FieldRule[] = [
 
   // Pronouns
   {
+    profileKey: 'personal.location',
+    exactAutocompletes: [],
+    exactLabels: ['location', 'current location', 'city, state, and country', 'city and country'],
+    regex: /^(where (are you|do you) (traveling from|live|based)|your (current )?location)\b/i,
+    weight: 95,
+    getter: (p) => [p.personal?.city, p.personal?.region, p.personal?.country].filter(Boolean).join(', '),
+  },
+
+  // Pronouns
+  {
     profileKey: 'personal.pronouns',
     exactAutocompletes: [],
     exactLabels: ['pronouns', 'preferred pronouns', 'your pronouns'],
@@ -195,13 +205,15 @@ export const FIELD_RULES: FieldRule[] = [
     exactAutocompletes: [],
     exactLabels: [
       'are you legally authorized to work in the united states',
+      'are you authorized to work in the united states',
+      'authorized to work in the united states',
       'authorized to work in the us',
       'are you authorized to work in the us',
       'work authorization us',
     ],
     regex: /authorized\s*to\s*work\s*(in\s*the)?\s*(us|united\s*states)/i,
     weight: 85,
-    getter: (p) => p.authorization?.workAuthUS ? 'Yes' : 'No',
+    getter: (p) => p.authorization?.workAuthUS == null ? undefined : p.authorization.workAuthUS ? 'Yes' : 'No',
   },
 
   // Requires Sponsorship US
@@ -215,7 +227,7 @@ export const FIELD_RULES: FieldRule[] = [
     ],
     regex: /require(\s*visa)?\s*sponsorship/i,
     weight: 85,
-    getter: (p) => p.authorization?.requiresSponsorshipUS ? 'Yes' : 'No',
+    getter: (p) => p.authorization?.requiresSponsorshipUS == null ? undefined : p.authorization.requiresSponsorshipUS ? 'Yes' : 'No',
   },
 
   // Availability / Start Date

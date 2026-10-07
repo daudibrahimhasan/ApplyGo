@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ExtensionSettings, BackupDataSchema } from '../shared/schemas/settings';
 import { Storage } from '../shared/storage';
-import { Key, ShieldCheck, Download, Upload, Trash2, Eye, EyeOff, Save, Check } from 'lucide-react';
+import { parseMarkdownKnowledge } from '../core/importers/markdownImporter';
+import { ShieldCheck, Download, Upload, Trash2, Eye, EyeOff, Save, Check, FileText } from 'lucide-react';
 import '../styles/global.css';
+import { DEFAULT_GEMINI_MODEL, GEMINI_TEXT_MODELS } from '../shared/aiModels';
 
 export const OptionsApp: React.FC = () => {
   const [settings, setSettings] = useState<ExtensionSettings>({
@@ -46,6 +48,7 @@ export const OptionsApp: React.FC = () => {
                 apiKey: settings.apiKey,
                 baseUrl: settings.baseUrl,
                 model: settings.model,
+                timeoutMs: settings.requestTimeoutMs,
               },
             },
             (response) => {
@@ -59,6 +62,11 @@ export const OptionsApp: React.FC = () => {
           });
         }
       });
+      if (res.success) {
+        await Storage.saveSettings(settings);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
       setTestResult(res);
     } catch (e: any) {
       setTestResult({ success: false, message: e.message || 'Connection test error.' });
@@ -93,7 +101,7 @@ export const OptionsApp: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `grounded_apply_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `applygo_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -125,8 +133,34 @@ export const OptionsApp: React.FC = () => {
     }
   };
 
+  const handleImportMarkdown = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportStatus(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseMarkdownKnowledge(text);
+      if (parsed.entries.length === 0) {
+        setImportStatus('No valid knowledge sections found in the markdown file.');
+        return;
+      }
+
+      await Storage.importKnowledge(parsed.entries, 'merge');
+      if (parsed.profileUpdates) {
+        await Storage.updateProfilePartial(parsed.profileUpdates);
+      }
+
+      setImportStatus(`Successfully imported ${parsed.entries.length} knowledge entries from ${file.name}!`);
+    } catch (err: any) {
+      setImportStatus(`Failed to import Markdown: ${err.message || String(err)}`);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   const handleWipeData = async () => {
-    if (window.confirm('Delete all stored GroundedApply data? This cannot be undone.')) {
+    if (window.confirm('Delete all stored ApplyGo data? This cannot be undone.')) {
       await Storage.clearAllData();
       alert('All local storage cleared.');
       window.location.reload();
@@ -135,25 +169,42 @@ export const OptionsApp: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '640px', margin: '40px auto', padding: '0 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '4px' }}>
         <div
           style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--accent-primary)',
+            width: '40px',
+            height: '40px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--bg-surface)',
             color: '#fff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontWeight: 700,
-            fontSize: '16px',
+            fontSize: '18px',
+            boxShadow: '0 4px 14px rgba(49, 125, 159, 0.28)',
+            flexShrink: 0,
           }}
         >
-          G
+          <img src="/branding/logo.png" alt="ApplyGo logo" width={32} height={32} />
         </div>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 600 }}>GroundedApply Settings</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 600, letterSpacing: '-0.3px' }}>ApplyGo Settings</h1>
+            <span
+              style={{
+                fontSize: '10px',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-full)',
+                backgroundColor: 'var(--accent-subtle)',
+                color: 'var(--accent-primary)',
+                fontWeight: 600,
+                border: '1px solid rgba(49, 125, 159, 0.25)',
+              }}
+            >
+              Ocean Theme
+            </span>
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             Personal Bring-Your-Own-Key configuration and data management
           </p>
@@ -164,16 +215,17 @@ export const OptionsApp: React.FC = () => {
       <div
         style={{
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: 'var(--radius-lg)',
           backgroundColor: 'var(--bg-surface)',
-          padding: '14px',
+          padding: '14px 16px',
           fontSize: '12px',
           lineHeight: 1.5,
           color: 'var(--text-secondary)',
+          boxShadow: 'var(--shadow-sm)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-          <ShieldCheck size={16} color="var(--success)" />
+          <ShieldCheck size={16} color="var(--accent-primary)" />
           <span>Local Extension Security</span>
         </div>
         Your API key and candidate data are stored in Chromium local extension storage. They are never exposed to content scripts or external servers. Local extension storage is suitable for personal BYOK use but is not equivalent to hardware-backed secret storage.
@@ -183,18 +235,116 @@ export const OptionsApp: React.FC = () => {
       <div
         style={{
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: 'var(--radius-lg)',
           backgroundColor: 'var(--bg-surface)',
-          padding: '16px',
+          padding: '18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
+          gap: '14px',
+          boxShadow: 'var(--shadow-sm)',
         }}
       >
-        <h2 style={{ fontSize: '14px', fontWeight: 600 }}>OpenAI-Compatible Model Setup</h2>
+        <h2 style={{ fontSize: '14px', fontWeight: 600 }}>AI Model Provider Setup</h2>
+
+        {/* Quick Presets */}
+        <div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 500 }}>
+            Provider Presets
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+                  model: DEFAULT_GEMINI_MODEL,
+                }))
+              }
+              style={{
+                fontSize: '11px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-full)',
+                border: '1px solid var(--border)',
+                backgroundColor: settings.baseUrl.includes('googleapis.com') ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
+                color: settings.baseUrl.includes('googleapis.com') ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                fontWeight: 500,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              Google Gemini (AI Studio)
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  baseUrl: 'https://api.openai.com/v1',
+                  model: 'gpt-4o',
+                }))
+              }
+              style={{
+                fontSize: '11px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-full)',
+                border: '1px solid var(--border)',
+                backgroundColor: settings.baseUrl.includes('openai.com') ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
+                color: settings.baseUrl.includes('openai.com') ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                fontWeight: 500,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              OpenAI (gpt-4o)
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  baseUrl: 'https://openrouter.ai/api/v1',
+                  model: 'anthropic/claude-3.5-sonnet',
+                }))
+              }
+              style={{
+                fontSize: '11px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-full)',
+                border: '1px solid var(--border)',
+                backgroundColor: settings.baseUrl.includes('openrouter') ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
+                color: settings.baseUrl.includes('openrouter') ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                fontWeight: 500,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              OpenRouter
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  baseUrl: 'http://localhost:11434/v1',
+                  model: 'llama3.1',
+                }))
+              }
+              style={{
+                fontSize: '11px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-full)',
+                border: '1px solid var(--border)',
+                backgroundColor: settings.baseUrl.includes('11434') ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
+                color: settings.baseUrl.includes('11434') ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                fontWeight: 500,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              Ollama (Local)
+            </button>
+          </div>
+        </div>
 
         <div>
-          <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>OpenAI API Key</label>
+          <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>API Key</label>
           <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
             <input
               type={showKey ? 'text' : 'password'}
@@ -219,13 +369,25 @@ export const OptionsApp: React.FC = () => {
 
         <div>
           <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Model Name</label>
-          <input
-            type="text"
-            value={settings.model}
-            onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-            placeholder="gpt-4o"
-            style={{ width: '100%', fontSize: '13px', marginTop: '4px' }}
-          />
+          {settings.baseUrl.includes('generativelanguage.googleapis.com') ? (
+            <select
+              value={settings.model}
+              onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+              style={{ width: '100%', fontSize: '13px', marginTop: '4px' }}
+            >
+              {GEMINI_TEXT_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>{model.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={settings.model}
+              onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+              placeholder="gpt-4o"
+              style={{ width: '100%', fontSize: '13px', marginTop: '4px' }}
+            />
+          )}
         </div>
 
         <div>
@@ -245,12 +407,14 @@ export const OptionsApp: React.FC = () => {
             disabled={testing || !settings.apiKey}
             style={{
               height: '40px',
-              padding: '0 16px',
+              padding: '0 20px',
               border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
+              borderRadius: 'var(--radius-full)',
               backgroundColor: 'var(--bg-surface-elevated)',
               fontSize: '12px',
-              fontWeight: 600,
+              fontWeight: 500,
+              cursor: testing || !settings.apiKey ? 'not-allowed' : 'pointer',
+              transition: 'all 0.15s ease',
             }}
           >
             {testing ? 'Testing...' : 'Test Connection'}
@@ -260,15 +424,19 @@ export const OptionsApp: React.FC = () => {
             onClick={handleSave}
             style={{
               height: '40px',
-              padding: '0 20px',
+              padding: '0 24px',
               backgroundColor: saved ? 'var(--success)' : 'var(--accent-primary)',
+              background: saved ? undefined : 'var(--accent-gradient)',
               color: '#fff',
-              borderRadius: 'var(--radius-md)',
+              borderRadius: 'var(--radius-full)',
               fontSize: '12px',
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
+              boxShadow: '0 4px 12px rgba(49, 125, 159, 0.25)',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
           >
             {saved ? <Check size={16} /> : <Save size={16} />}
@@ -279,8 +447,8 @@ export const OptionsApp: React.FC = () => {
         {testResult && (
           <div
             style={{
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-sm)',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
               fontSize: '12px',
               backgroundColor: testResult.success ? 'var(--success-bg)' : 'var(--danger-bg)',
               color: testResult.success ? 'var(--success)' : 'var(--danger)',
@@ -296,12 +464,13 @@ export const OptionsApp: React.FC = () => {
       <div
         style={{
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: 'var(--radius-lg)',
           backgroundColor: 'var(--bg-surface)',
-          padding: '16px',
+          padding: '18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
+          gap: '14px',
+          boxShadow: 'var(--shadow-sm)',
         }}
       >
         <h2 style={{ fontSize: '14px', fontWeight: 600 }}>Backup & Data Portability</h2>
@@ -309,40 +478,66 @@ export const OptionsApp: React.FC = () => {
           Export or import your full candidate profile, grounded knowledge base, and application activity as a local JSON file.
         </p>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={handleExportBackup}
             style={{
-              height: '40px',
+              height: '38px',
               padding: '0 16px',
               border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
+              borderRadius: 'var(--radius-full)',
               backgroundColor: 'var(--bg-surface-elevated)',
               fontSize: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <Download size={15} /> Export Backup JSON
-          </button>
-
-          <label
-            style={{
-              height: '40px',
-              padding: '0 16px',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--bg-surface-elevated)',
-              fontSize: '12px',
+              fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
           >
-            <Upload size={15} /> Import Backup JSON
+            <Download size={14} /> Export Backup JSON
+          </button>
+
+          <label
+            style={{
+              height: '38px',
+              padding: '0 16px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: 'var(--bg-surface-elevated)',
+              fontSize: '12px',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Upload size={14} /> Import Backup JSON
             <input type="file" accept=".json" onChange={handleImportBackup} style={{ display: 'none' }} />
+          </label>
+
+          <label
+            style={{
+              height: '38px',
+              padding: '0 16px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: 'var(--accent-subtle)',
+              fontSize: '12px',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: 'var(--accent-primary)',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <FileText size={14} /> Import Knowledge Base (.md)
+            <input type="file" accept=".md,.markdown,text/markdown" onChange={handleImportMarkdown} style={{ display: 'none' }} />
           </label>
         </div>
 
@@ -357,12 +552,12 @@ export const OptionsApp: React.FC = () => {
       <div
         style={{
           border: '1px solid var(--danger-border)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: 'var(--radius-lg)',
           backgroundColor: 'var(--danger-bg)',
-          padding: '16px',
+          padding: '18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px',
+          gap: '10px',
         }}
       >
         <h2 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--danger)' }}>Reset Extension</h2>
@@ -374,18 +569,21 @@ export const OptionsApp: React.FC = () => {
           style={{
             alignSelf: 'flex-start',
             height: '36px',
-            padding: '0 14px',
+            padding: '0 16px',
             border: '1px solid var(--danger-border)',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-full)',
+            backgroundColor: 'rgba(244, 63, 94, 0.15)',
             color: 'var(--danger)',
             fontSize: '12px',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
           }}
         >
-          <Trash2 size={15} /> Delete All Stored Data
+          <Trash2 size={14} /> Delete All Stored Data
         </button>
       </div>
     </div>

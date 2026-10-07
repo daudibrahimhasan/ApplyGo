@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { DetectedField } from '../../shared/schemas/fields';
+import { isWrittenQuestion as canDraftField } from '../../core/matching/workflow';
 import { ConfidenceBadge, FillStateBadge } from './StatusBadge';
-import { Check, Copy, Eye, ShieldAlert, Sparkles } from 'lucide-react';
+import { Check, Copy, Eye, ShieldAlert, Sparkles, UserRoundPen } from 'lucide-react';
 
 interface FieldCardProps {
   field: DetectedField;
   onFillSingle: (field: DetectedField) => Promise<void>;
   onHighlight: (selector: string) => void;
   onSelectForQuestions?: (field: DetectedField) => void;
+  onOpenProfile?: () => void;
 }
 
 export const FieldCard: React.FC<FieldCardProps> = ({
@@ -15,11 +17,12 @@ export const FieldCard: React.FC<FieldCardProps> = ({
   onFillSingle,
   onHighlight,
   onSelectForQuestions,
+  onOpenProfile,
 }) => {
   const [copied, setCopied] = useState(false);
   const [filling, setFilling] = useState(false);
 
-  const isWrittenQuestion = field.inputType === 'textarea' || (field.wordLimit && field.wordLimit > 15);
+  const isWrittenQuestion = canDraftField(field);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -43,11 +46,10 @@ export const FieldCard: React.FC<FieldCardProps> = ({
 
   return (
     <div
+      className="ocean-field-row"
       style={{
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md)',
-        backgroundColor: 'var(--bg-surface)',
-        padding: '10px 12px',
+        borderBottom: '1px solid var(--border-subtle)',
+        padding: '16px 0',
         display: 'flex',
         flexDirection: 'column',
         gap: '6px',
@@ -145,6 +147,11 @@ export const FieldCard: React.FC<FieldCardProps> = ({
 
       {/* Action Buttons */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
+        {!field.proposedValue && field.proposedProfileKey && onOpenProfile && (
+          <button onClick={onOpenProfile} className="secondary-action-button">
+            <UserRoundPen size={12} /> Add in Profile
+          </button>
+        )}
         <button
           onClick={() => onHighlight(field.selector)}
           title="Scroll and highlight in page"
@@ -182,7 +189,7 @@ export const FieldCard: React.FC<FieldCardProps> = ({
           </button>
         )}
 
-        {field.confidence !== 'blocked' && field.proposedValue && (
+        {field.confidence !== 'blocked' && field.proposedValue && !(isWrittenQuestion && field.fillState === 'review') && (
           <button
             onClick={handleFill}
             disabled={filling || field.fillState === 'filled'}

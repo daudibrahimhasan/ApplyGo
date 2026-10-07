@@ -3,10 +3,14 @@ import { UserProfile } from '../schemas/profile';
 /**
  * Empty default profile.
  *
- * GroundedApply ships with NO pre-filled personal data.
+ * ApplyGo ships with NO pre-filled personal data.
  * The user must populate their own profile through the extension UI
  * or by importing a backup. This prevents fabricated claims from
  * being deterministically autofilled into real applications.
+ *
+ * Authorization and availability fields are null (unanswered) until
+ * the user explicitly provides them. The deterministic engine treats
+ * null values as "not yet answered" and will not fill them.
  */
 export const defaultProfile: UserProfile = {
   id: 'profile_default',
@@ -39,18 +43,18 @@ export const defaultProfile: UserProfile = {
   awards: [],
   leadership: [],
   authorization: {
-    workAuthUS: false,
-    requiresSponsorshipUS: true,
-    workAuthUK: false,
-    requiresSponsorshipUK: true,
-    workAuthEU: false,
-    requiresSponsorshipEU: true,
+    workAuthUS: null,
+    requiresSponsorshipUS: null,
+    workAuthUK: null,
+    requiresSponsorshipUK: null,
+    workAuthEU: null,
+    requiresSponsorshipEU: null,
     otherCountries: [],
   },
   availability: {
     preferredLocations: [],
-    remotePreference: 'any',
-    fullTime: true,
+    remotePreference: null,
+    fullTime: null,
   },
   preferences: {
     types: [],

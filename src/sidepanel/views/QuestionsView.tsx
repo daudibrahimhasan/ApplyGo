@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { DetectedField, PageOpportunity } from '../../shared/schemas/fields';
 import { KnowledgeEntry, PreviousAnswer } from '../../shared/schemas/knowledge';
 import { UserProfile } from '../../shared/schemas/profile';
-import { GenerationRequest, GeneratedAnswer } from '../../shared/schemas/generation';
+import { GenerationRequest } from '../../shared/schemas/generation';
 import { retrieveKnowledge, retrievePreviousAnswers, ScoredKnowledgeEntry, RetrievedPreviousAnswer } from '../../core/retrieval/retriever';
 import { OutputValidationResult } from '../../core/generation/validator';
-import { Sparkles, BookOpen, AlertTriangle, Check, RefreshCw, Send, ArrowRight, ShieldAlert, Edit2, AlertOctagon } from 'lucide-react';
+import { isWrittenQuestion } from '../../core/matching/workflow';
+import { Sparkles, AlertTriangle, Check, RefreshCw, Send, AlertOctagon } from 'lucide-react';
 
 interface QuestionsViewProps {
   fields: DetectedField[];
@@ -21,28 +22,27 @@ interface QuestionsViewProps {
 export const QuestionsView: React.FC<QuestionsViewProps> = ({
   fields,
   opportunity,
-  profile,
+  profile: _profile,
   knowledge,
   previousAnswers,
   onInsertAnswer,
   onSavePreviousAnswer,
   selectedFieldId,
 }) => {
-  const writtenFields = fields.filter(
-    (f) => f.inputType === 'textarea' || (f.wordLimit && f.wordLimit > 15)
-  );
+  const writtenFields = fields.filter(isWrittenQuestion);
 
-  const [activeFieldId, setActiveFieldId] = useState<string>(
-    selectedFieldId || writtenFields[0]?.id || ''
-  );
+  const [selectedIdState, setSelectedIdState] = useState<string | null>(null);
+  const [prevSelectedProp, setPrevSelectedProp] = useState<string | undefined>(selectedFieldId);
 
-  useEffect(() => {
-    if (selectedFieldId) {
-      setActiveFieldId(selectedFieldId);
-    }
-  }, [selectedFieldId]);
+  if (selectedFieldId !== prevSelectedProp) {
+    setPrevSelectedProp(selectedFieldId);
+    setSelectedIdState(selectedFieldId || null);
+  }
 
-  const activeField = fields.find((f) => f.id === activeFieldId) || writtenFields[0];
+  const activeFieldId = selectedIdState || selectedFieldId || writtenFields[0]?.id || '';
+  const setActiveFieldId = (id: string) => setSelectedIdState(id);
+
+  const activeField = writtenFields.find((f) => f.id === activeFieldId) || writtenFields[0];
 
   // Retrieved context for active question
   const [retrievedKnowledge, setRetrievedKnowledge] = useState<ScoredKnowledgeEntry[]>([]);
@@ -64,25 +64,28 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
     const questionText = activeField.label || activeField.placeholder || activeField.ariaLabel;
     if (!questionText) return;
 
-    const scored = retrieveKnowledge(questionText, knowledge, opportunity?.opportunityType, 5);
-    setRetrievedKnowledge(scored);
-    setSelectedKnowledgeIds(scored.map((s) => s.entry.id));
+    // Wrap in async IIFE to avoid synchronous setState in effect body
+    void (async () => {
+      const scored = retrieveKnowledge(questionText, knowledge, opportunity?.opportunityType, 5);
+      setRetrievedKnowledge(scored);
+      setSelectedKnowledgeIds(scored.map((s) => s.entry.id));
 
-    const prev = retrievePreviousAnswers(questionText, previousAnswers);
-    setRetrievedPreviousAnswers(prev);
-    if (prev.length > 0 && prev[0].isExactMatch) {
-      setSelectedPreviousAnswerId(prev[0].answer.id);
-    } else {
-      setSelectedPreviousAnswerId(undefined);
-    }
+      const prev = retrievePreviousAnswers(questionText, previousAnswers);
+      setRetrievedPreviousAnswers(prev);
+      if (prev.length > 0 && prev[0].isExactMatch) {
+        setSelectedPreviousAnswerId(prev[0].answer.id);
+      } else {
+        setSelectedPreviousAnswerId(undefined);
+      }
 
-    // Reset draft and states
-    setCurrentDraft(activeField.currentValue || '');
-    setValidationResult(null);
-    setGenerationError(null);
-    setInsertSuccess(false);
-    setOverrideAcknowledged(false);
-  }, [activeField?.id, knowledge, previousAnswers]);
+      // Reset draft and states
+      setCurrentDraft(activeField.currentValue || activeField.proposedValue || '');
+      setValidationResult(null);
+      setGenerationError(null);
+      setInsertSuccess(false);
+      setOverrideAcknowledged(false);
+    })();
+  }, [activeField, knowledge, previousAnswers, opportunity?.opportunityType]);
 
   const handleToggleKnowledge = (id: string) => {
     setSelectedKnowledgeIds((prev) =>
@@ -166,7 +169,12 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
   const handleApproveAndInsert = async () => {
     if (!activeField || !currentDraft.trim()) return;
 
-    await onInsertAnswer(activeField, currentDraft);
+    try {
+      await onInsertAnswer(activeField, currentDraft);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : 'The page rejected insertion.');
+      return;
+    }
     setInsertSuccess(true);
 
     // Save as previous approved answer
@@ -192,7 +200,7 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
       <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
         <p style={{ fontSize: '13px', marginBottom: '8px' }}>No written or long-form questions detected on this page.</p>
         <p style={{ fontSize: '11px' }}>
-          GroundedApply detects textareas and essay prompts. When on an application page, they will appear here for grounded drafting.
+          ApplyGo detects textareas and essay prompts. When on an application page, they will appear here for grounded drafting.
         </p>
       </div>
     );
@@ -281,11 +289,14 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
               onClick={() => setCurrentDraft(retrievedPreviousAnswers[0].answer.answer)}
               style={{
                 fontSize: '11px',
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-sm)',
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-full)',
                 backgroundColor: 'var(--bg-surface-elevated)',
                 border: '1px solid var(--border)',
                 color: 'var(--text-primary)',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               Use directly
@@ -298,12 +309,14 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
               disabled={isGenerating}
               style={{
                 fontSize: '11px',
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-sm)',
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-full)',
                 backgroundColor: 'rgba(245, 158, 11, 0.15)',
                 border: '1px solid var(--warning-border)',
                 color: 'var(--warning)',
                 fontWeight: 600,
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               Adapt to this opportunity
@@ -353,7 +366,7 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
                   onChange={() => handleToggleKnowledge(item.entry.id)}
                   style={{ cursor: 'pointer' }}
                 />
-                <span style={{ fontWeight: 500 }}>[{item.entry.category}]</span>
+                <span style={{ fontWeight: 500, color: 'var(--accent-primary)' }}>[{item.entry.category}]</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {item.entry.title}
                 </span>
@@ -371,15 +384,18 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
           style={{
             flex: '1 1 120px',
             height: '38px',
-            backgroundColor: 'var(--accent-primary)',
+            background: 'var(--accent-gradient)',
             color: '#fff',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-full)',
             fontWeight: 600,
             fontSize: '12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '6px',
+            boxShadow: '0 4px 12px rgba(49, 125, 159, 0.25)',
+            cursor: isGenerating || selectedKnowledgeIds.length === 0 ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease',
           }}
         >
           {isGenerating ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}
@@ -392,13 +408,16 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
               onClick={() => handleGenerate('shorten')}
               disabled={isGenerating}
               style={{
-                padding: '0 10px',
+                padding: '0 12px',
                 height: '38px',
                 backgroundColor: 'var(--bg-surface)',
                 border: '1px solid var(--border)',
                 color: 'var(--text-secondary)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-full)',
                 fontSize: '11px',
+                fontWeight: 500,
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               Shorten
@@ -408,13 +427,16 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
               onClick={() => handleGenerate('expand')}
               disabled={isGenerating}
               style={{
-                padding: '0 10px',
+                padding: '0 12px',
                 height: '38px',
                 backgroundColor: 'var(--bg-surface)',
                 border: '1px solid var(--border)',
                 color: 'var(--text-secondary)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-full)',
                 fontSize: '11px',
+                fontWeight: 500,
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               Expand
@@ -424,13 +446,16 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
               onClick={() => handleGenerate('rewrite')}
               disabled={isGenerating}
               style={{
-                padding: '0 10px',
+                padding: '0 12px',
                 height: '38px',
                 backgroundColor: 'var(--bg-surface)',
                 border: '1px solid var(--border)',
                 color: 'var(--text-secondary)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-full)',
                 fontSize: '11px',
+                fontWeight: 500,
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               Rewrite
@@ -580,10 +605,13 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
                   ? 'var(--warning)'
                   : 'var(--bg-surface)'
                 : 'var(--accent-primary)',
+            background: (!validationResult || validationResult.canInsertDirectly) && !insertSuccess
+              ? 'var(--accent-gradient)'
+              : undefined,
             color: validationResult && !validationResult.canInsertDirectly && !overrideAcknowledged
               ? 'var(--text-muted)'
               : '#fff',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-full)',
             fontWeight: 600,
             fontSize: '13px',
             display: 'flex',
@@ -593,9 +621,13 @@ export const QuestionsView: React.FC<QuestionsViewProps> = ({
             border: validationResult && !validationResult.canInsertDirectly
               ? '1px solid var(--border)'
               : 'none',
+            boxShadow: (!validationResult || validationResult.canInsertDirectly) && currentDraft.trim()
+              ? '0 4px 14px rgba(49, 125, 159, 0.28)'
+              : undefined,
             cursor: (!currentDraft.trim() || (validationResult !== null && !validationResult.canInsertDirectly && !overrideAcknowledged))
               ? 'not-allowed'
               : 'pointer',
+            transition: 'all 0.15s ease',
           }}
         >
           {insertSuccess ? <Check size={16} /> : <Send size={15} />}

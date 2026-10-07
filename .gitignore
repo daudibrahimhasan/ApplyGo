@@ -2,6 +2,11 @@ node_modules/
 dist/
 release/
 .playwright-userDataDir/
+.playwright-userDataDir-*/
+knowledge/
+playwright-report/
+.env.*
+!.env.example
 test-results/
 .env
 *.log

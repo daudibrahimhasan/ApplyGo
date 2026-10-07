@@ -133,4 +133,55 @@ describe('matcher', () => {
     expect(match.confidence).toBe('high');
     expect(match.proposedValue).toBe('BS');
   });
+
+  it('leaves authorization unanswered when profile authorization is null', () => {
+    const unconfiguredProfile: UserProfile = {
+      ...testProfile,
+      authorization: {
+        workAuthUS: null,
+        requiresSponsorshipUS: null,
+        workAuthUK: null,
+        requiresSponsorshipUK: null,
+        workAuthEU: null,
+        requiresSponsorshipEU: null,
+        otherCountries: [],
+      },
+    };
+    const field = createMockField({
+      label: 'Are you legally authorized to work in the United States?',
+      name: 'work_auth_us',
+    });
+    const match = matchFieldToProfile(field, unconfiguredProfile);
+
+    // Because workAuthUS is null (unanswered), matcher must NOT propose Yes or No
+    expect(match.proposedValue).toBeUndefined();
+    expect(match.confidence).toBe('low');
+  });
+
+  it('correctly matches Yes or No when user explicitly sets authorization', () => {
+    const authorizedProfile: UserProfile = {
+      ...testProfile,
+      authorization: {
+        ...testProfile.authorization,
+        workAuthUS: true,
+      },
+    };
+    const field = createMockField({
+      label: 'Are you authorized to work in the United States?',
+    });
+    const matchAuthorized = matchFieldToProfile(field, authorizedProfile);
+    expect(matchAuthorized.proposedValue).toBe('Yes');
+    expect(matchAuthorized.confidence).toBe('high');
+
+    const unauthorizedProfile: UserProfile = {
+      ...testProfile,
+      authorization: {
+        ...testProfile.authorization,
+        workAuthUS: false,
+      },
+    };
+    const matchUnauthorized = matchFieldToProfile(field, unauthorizedProfile);
+    expect(matchUnauthorized.proposedValue).toBe('No');
+    expect(matchUnauthorized.confidence).toBe('high');
+  });
 });

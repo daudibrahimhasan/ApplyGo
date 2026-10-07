@@ -3,7 +3,7 @@ import { KnowledgeEntry } from '../schemas/knowledge';
 /**
  * Empty default knowledge base.
  *
- * GroundedApply ships with NO pre-filled knowledge entries.
+ * ApplyGo ships with NO pre-filled knowledge entries.
  * The user must add their own facts, experiences, projects,
  * and motivations through the Knowledge tab or by importing a backup.
  * This prevents fabricated achievements from being sent to the

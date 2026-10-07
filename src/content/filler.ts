@@ -2,6 +2,7 @@ import { FillTransaction } from '../shared/schemas/fields';
 import { evaluateFieldSensitivity } from '../core/security/sensitiveDetector';
 import { normalizeText, matchOptionValue } from '../core/matching/normalizer';
 import { UndoManager } from './undo';
+import { readFieldValue } from './fieldValue';
 
 export interface FillFieldItem {
   id: string;
@@ -13,6 +14,33 @@ export interface FillResult {
   transaction: FillTransaction;
   successCount: number;
   failureCount: number;
+}
+
+export async function fillFileElement(
+  selector: string,
+  resume: { name: string; fileType: 'pdf' | 'docx'; dataUrl: string }
+): Promise<{ success: boolean; reason?: string }> {
+  const input = document.querySelector<HTMLInputElement>(selector);
+  if (!input || input.type !== 'file') return { success: false, reason: 'File input not found.' };
+  if (!resume.dataUrl) return { success: false, reason: 'Stored resume file data is missing.' };
+
+  try {
+    const blob = await fetch(resume.dataUrl).then((response) => response.blob());
+    const mimeType = resume.fileType === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const file = new File([blob], resume.name, { type: mimeType, lastModified: Date.now() });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    const success = input.files?.[0]?.name === resume.name;
+    flashHighlight(input, success);
+    return { success, reason: success ? undefined : 'The page rejected the stored resume.' };
+  } catch (error) {
+    return { success: false, reason: error instanceof Error ? error.message : 'Resume attachment failed.' };
+  }
 }
 
 /**
@@ -65,6 +93,9 @@ export async function fillSingleElement(
   if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') {
     return { success: false, previousValue: '', actualValue: '', reason: 'Element is disabled' };
   }
+  if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true') {
+    return { success: false, previousValue: '', actualValue: '', reason: 'Field is read-only' };
+  }
 
   // 3. Confirm not sensitive
   const sensitivity = evaluateFieldSensitivity({
@@ -76,7 +107,7 @@ export async function fillSingleElement(
     return { success: false, previousValue: '', actualValue: '', reason: 'Field is sensitive/blocked' };
   }
 
-  const previousValue = 'value' in el ? String((el as HTMLInputElement).value || '') : '';
+  const previousValue = readFieldValue(el);
 
   // 4. Do not overwrite if user already entered non-empty different value
   if (previousValue && previousValue !== targetValue) {
@@ -106,24 +137,88 @@ export async function fillSingleElement(
       };
     }
     setNativeValue(select, match.value);
+  } else if (tag === 'input' && (el as HTMLInputElement).type === 'radio') {
+    const input = el as HTMLInputElement;
+    const group = input.name
+      ? Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+          .filter((candidate) => candidate.name === input.name)
+      : [input];
+    const candidates = group.map((candidate) => {
+      const explicitLabel = candidate.id
+        ? document.querySelector<HTMLLabelElement>(`label[for="${CSS.escape(candidate.id)}"]`)
+        : null;
+      const wrappingLabel = candidate.closest('label');
+      const label = explicitLabel?.textContent || wrappingLabel?.textContent || candidate.value;
+      return { candidate, label: label.trim(), value: candidate.value };
+    });
+    const matched = matchOptionValue(
+      targetValue,
+      candidates.map((item) => ({ label: item.label, value: item.value }))
+    );
+    const target = matched
+      ? candidates.find((item) => item.value === matched.value || item.label === matched.label)?.candidate
+      : undefined;
+    if (!target) {
+      flashHighlight(el, false);
+      return { success: false, previousValue, actualValue: '', reason: `Could not match "${targetValue}" to radio options.` };
+    }
+    target.click();
+    target.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    flashHighlight(target, target.checked);
+    return {
+      success: target.checked,
+      previousValue,
+      actualValue: target.checked ? target.value : '',
+      reason: target.checked ? undefined : 'The page rejected the radio selection.',
+    };
   } else if (tag === 'input' || tag === 'textarea') {
     const input = el as HTMLInputElement | HTMLTextAreaElement;
     setNativeValue(input, targetValue);
+  } else if (el.getAttribute('contenteditable') === 'true') {
+    el.focus();
+    el.textContent = targetValue;
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: targetValue }));
+    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
   } else if (el.getAttribute('role') === 'combobox') {
-    // Custom combobox: set textContent or aria-valuenow or internal input
+    // Custom comboboxes (including Airtable) need a real open-and-select interaction.
     const innerInput = el.querySelector<HTMLInputElement>('input');
     if (innerInput) {
       setNativeValue(innerInput, targetValue);
-    } else {
-      el.textContent = targetValue;
-      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
     }
+    el.click();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+      .filter((option) => option.offsetParent !== null);
+    const matched = matchOptionValue(
+      targetValue,
+      options.map((option) => ({
+        label: (option.textContent || '').trim(),
+        value: option.getAttribute('data-value') || option.getAttribute('value') || (option.textContent || '').trim(),
+      }))
+    );
+    const option = matched
+      ? options.find((candidate) => {
+          const text = (candidate.textContent || '').trim();
+          const value = candidate.getAttribute('data-value') || candidate.getAttribute('value') || text;
+          return text === matched.label || value === matched.value;
+        })
+      : undefined;
+    if (!option) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      flashHighlight(el, false);
+      return { success: false, previousValue, actualValue: '', reason: `Could not match "${targetValue}" to combobox options.` };
+    }
+    option.click();
+    option.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
   }
 
   // Read back value to verify framework retained it
   const readBack = 'value' in el ? String((el as HTMLInputElement).value || '') : el.textContent || '';
-  const success = normalizeText(readBack) === normalizeText(targetValue);
+  const normalizedReadBack = normalizeText(readBack);
+  const normalizedTarget = normalizeText(targetValue);
+  const success = normalizedReadBack === normalizedTarget ||
+    (el.getAttribute('role') === 'combobox' && normalizedReadBack.includes(normalizedTarget));
 
   flashHighlight(el, success);
 
@@ -135,13 +230,16 @@ export async function fillSingleElement(
   };
 }
 
-export async function fillFields(items: FillFieldItem[]): Promise<FillResult> {
+export async function fillFields(items: FillFieldItem[], delayMs = 40): Promise<FillResult> {
   const transactionId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const entries: FillTransaction['entries'] = [];
   let successCount = 0;
   let failureCount = 0;
 
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
+    if (index > 0 && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 500)));
+    }
     const result = await fillSingleElement(item.selector, item.value);
     entries.push({
       fieldId: item.id,

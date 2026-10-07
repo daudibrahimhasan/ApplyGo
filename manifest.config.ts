@@ -2,13 +2,18 @@ import { defineManifest } from '@crxjs/vite-plugin';
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'GroundedApply',
+  name: 'ApplyGo',
   version: '1.0.0',
   description: 'Deterministic form engine & grounded AI writing assistant for opportunity applications',
-  permissions: ['activeTab', 'scripting', 'storage', 'sidePanel'],
+  permissions: ['activeTab', 'tabs', 'scripting', 'storage', 'sidePanel'],
   host_permissions: ['https://*/*', 'http://*/*'],
   action: {
-    default_title: 'Open GroundedApply',
+    default_title: 'Open ApplyGo',
+    default_icon: {
+      16: 'public/icons/icon16.png',
+      48: 'public/icons/icon48.png',
+      128: 'public/icons/icon128.png',
+    },
   },
   side_panel: {
     default_path: 'src/sidepanel/index.html',
@@ -30,4 +35,8 @@ export default defineManifest({
     48: 'public/icons/icon48.png',
     128: 'public/icons/icon128.png',
   },
+  web_accessible_resources: [{
+    resources: ['public/icons/icon48.png'],
+    matches: ['http://*/*', 'https://*/*'],
+  }],
 });
